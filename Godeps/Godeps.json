@@ -1,0 +1,73 @@
+{
+	"ImportPath": "github.com/nitro/sidecar-executor",
+	"GoVersion": "go1.7",
+	"GodepVersion": "v74",
+	"Deps": [
+		{
+			"ImportPath": "github.com/Sirupsen/logrus",
+			"Comment": "v0.10.0-16-gcd7d1bb",
+			"Rev": "cd7d1bbe41066b6c1f19780f895901052150a575"
+		},
+		{
+			"ImportPath": "github.com/gogo/protobuf/proto",
+			"Comment": "v0.1-115-gc57e439",
+			"Rev": "c57e439bad574c2e0877ff18d514badcfced004d"
+		},
+		{
+			"ImportPath": "github.com/golang/glog",
+			"Rev": "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/executor",
+			"Comment": "before-0.26-protos-41-g24208b5",
+			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/mesosproto",
+			"Comment": "before-0.26-protos-41-g24208b5",
+			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/mesosproto/scheduler",
+			"Comment": "before-0.26-protos-41-g24208b5",
+			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/mesosutil",
+			"Comment": "before-0.26-protos-41-g24208b5",
+			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/mesosutil/process",
+			"Comment": "before-0.26-protos-41-g24208b5",
+			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/messenger",
+			"Comment": "before-0.26-protos-41-g24208b5",
+			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/messenger/sessionid",
+			"Comment": "before-0.26-protos-41-g24208b5",
+			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
+		},
+		{
+			"ImportPath": "github.com/mesos/mesos-go/upid",
+			"Comment": "before-0.26-protos-41-g24208b5",
+			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
+		},
+		{
+			"ImportPath": "github.com/pborman/uuid",
+			"Rev": "dee7705ef7b324f27ceb85a121c61f2c2e8ce988"
+		},
+		{
+			"ImportPath": "golang.org/x/net/context",
+			"Rev": "ef00b378c73f107bf44d5c9b69875255ce89b79a"
+		},
+		{
+			"ImportPath": "golang.org/x/sys/unix",
+			"Rev": "002cbb5f952456d0c50e0d2aff17ea5eca716979"
+		}
+	]
+}
