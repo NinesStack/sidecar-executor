@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/fsouza/go-dockerclient"
 	log "github.com/Sirupsen/logrus"
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
@@ -14,10 +15,13 @@ import (
 
 type sidecarExecutor struct {
 	driver *executor.MesosExecutorDriver
+	client *docker.Client
 }
 
-func newSidecarExecutor() *sidecarExecutor {
-	return &sidecarExecutor{}
+func newSidecarExecutor(client *docker.Client) *sidecarExecutor {
+	return &sidecarExecutor{
+		client: client,
+	}
 }
 
 const (
@@ -68,6 +72,13 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	exec.sendStatus(TaskRunning, taskInfo)
 
 	// Do something!
+	log.Infof("Pulling Docker image '%s'", *taskInfo.Container.Docker.Image)
+	exec.client.PullImage(docker.PullImageOptions{
+			Repository: *taskInfo.Container.Docker.Image,
+		},
+		docker.AuthConfiguration{},
+	)
+	log.Info("Pulled.")
 
 	// Tell Mesos and thus the framework that we're done
 	exec.sendStatus(TaskFinished, taskInfo)
@@ -107,7 +118,14 @@ func init() {
 func main() {
 	log.Info("Starting Sidecar Executor")
 
-	scExec := newSidecarExecutor()
+	// Get a Docker client. Without one, we can't do anything.
+	dockerClient, err := docker.NewClientFromEnv()
+	if err != nil {
+		log.Error(err.Error())
+		os.Exit(1)
+	}
+
+	scExec := newSidecarExecutor(dockerClient)
 
 	dconfig := executor.DriverConfig{
 		Executor: scExec,
@@ -118,6 +136,7 @@ func main() {
 		log.Info("Unable to create an ExecutorDriver ", err.Error())
 	}
 
+	// Give the executor a reference to the driver
 	scExec.driver = driver
 
 	_, err = driver.Start()
@@ -135,3 +154,125 @@ func main() {
 
 	log.Info("Sidecar Executor exiting")
 }
+/*
+{
+   "resources" : [
+      {
+         "type" : 1,
+         "name" : "ports",
+         "ranges" : {
+            "range" : [
+               {
+                  "begin" : 31711,
+                  "end" : 31711
+               }
+            ]
+         }
+      },
+      {
+         "name" : "cpus",
+         "scalar" : {
+            "value" : 0.1
+         },
+         "type" : 0
+      },
+      {
+         "name" : "mem",
+         "scalar" : {
+            "value" : 128
+         },
+         "type" : 0
+      }
+   ],
+   "labels" : {},
+   "slave_id" : {
+      "value" : "48647419-b03c-48f3-b938-2c2ad869eaab-S1"
+   },
+   "executor" : {
+      "framework_id" : {
+         "value" : "Singularity"
+      },
+      "source" : "nginx-2392676-1479746264572-1-NEW_DEPLOY-1479746261223",
+      "command" : {
+         "value" : "/home/kmatthias/sidecar-executor",
+         "environment" : {
+            "variables" : [
+               {
+                  "name" : "INSTANCE_NO",
+                  "value" : "1"
+               },
+               {
+                  "value" : "dev-singularity-sick-sing",
+                  "name" : "TASK_HOST"
+               },
+               {
+                  "name" : "TASK_REQUEST_ID",
+                  "value" : "nginx"
+               },
+               {
+                  "name" : "TASK_DEPLOY_ID",
+                  "value" : "2392676"
+               },
+               {
+                  "value" : "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT",
+                  "name" : "TASK_ID"
+               },
+               {
+                  "name" : "ESTIMATED_INSTANCE_COUNT",
+                  "value" : "3"
+               },
+               {
+                  "name" : "PORT",
+                  "value" : "31711"
+               },
+               {
+                  "value" : "31711",
+                  "name" : "PORT0"
+               }
+            ]
+         }
+      },
+      "executor_id" : {
+         "value" : "s1"
+      }
+   },
+   "name" : "nginx",
+   "task_id" : {
+      "value" : "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
+   },
+   "container" : {
+      "docker" : {
+         "network" : 2,
+         "parameters" : [
+            {
+               "value" : "ServiceName=nginx",
+               "key" : "label"
+            },
+            {
+               "key" : "label",
+               "value" : "ServicePort_80=11000"
+            },
+            {
+               "value" : "HealthCheck=HttpGet",
+               "key" : "label"
+            },
+            {
+               "key" : "label",
+               "value" : "HealthCheckArgs=http://{{ host }}:{{ tcp 11000 }}/"
+            }
+         ],
+         "force_pull_image" : false,
+         "privileged" : false,
+         "image" : "nginx:latest",
+         "port_mappings" : [
+            {
+               "protocol" : "tcp",
+               "container_port" : 80,
+               "host_port" : 31711
+            }
+         ]
+      },
+      "type" : 1
+   }
+}
+*/
