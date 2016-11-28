@@ -90,7 +90,12 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	}
 
 	// Start the container
-	exec.client.StartContainer(container.ID, containerConfig.HostConfig)
+	err = exec.client.StartContainer(container.ID, containerConfig.HostConfig)
+	if err != nil {
+		log.Error("Failed to create Docker container: %s", err.Error())
+		exec.failTask(taskInfo)
+		return
+	}
 
 	// Tell Mesos and thus the framework that we're done
 	exec.sendStatus(TaskFinished, taskInfo)

@@ -3,13 +3,18 @@ package container
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 )
 
-func PullImage(client *docker.Client, taskInfo *mesos.TaskInfo) {
+type DockerClient interface {
+	PullImage(docker.PullImageOptions, docker.AuthConfiguration) error
+}
+
+func PullImage(client DockerClient, taskInfo *mesos.TaskInfo) {
 	log.Infof("Pulling Docker image '%s' because of force pull setting", *taskInfo.Container.Docker.Image)
 	client.PullImage(docker.PullImageOptions{
 		Repository: *taskInfo.Container.Docker.Image,
@@ -26,11 +31,13 @@ func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
 		Name: *taskInfo.TaskId.Value,
 		Config: &docker.Config{
 			CPUShares:    int64(*cpus.Scalar.Value * float64(1024)),
+			Env:          EnvForTask(taskInfo),
 			ExposedPorts: PortsForTask(taskInfo),
 			Image:        *taskInfo.Container.Docker.Image,
+			Labels:       LabelsForTask(taskInfo),
 		},
 		HostConfig: &docker.HostConfig{
-			Binds: BindsForTask(taskInfo),
+			Binds:        BindsForTask(taskInfo),
 			PortBindings: PortBindingsForTask(taskInfo),
 		},
 	}
@@ -48,6 +55,36 @@ func PortsForTask(taskInfo *mesos.TaskInfo) map[docker.Port]struct{} {
 	log.Debugf("Ports: %#v", ports)
 
 	return ports
+}
+
+// Map Mesos environment settings to Docker environment (-e FOO=BAR)
+func EnvForTask(taskInfo *mesos.TaskInfo) []string {
+	var envVars []string
+
+	for _, param := range taskInfo.Container.Docker.Parameters {
+		if *param.Key == "env" {
+			envVars = append(envVars, *param.Value)
+		}
+	}
+
+	return envVars
+}
+
+// Map Mesos parameter lables to Docker labels
+func LabelsForTask(taskInfo *mesos.TaskInfo) map[string]string {
+	labels := make(map[string]string, len(taskInfo.Container.Docker.Parameters))
+
+	for _, param := range taskInfo.Container.Docker.Parameters {
+		if *param.Key == "label" {
+			values := strings.SplitN(*param.Value, "=", 1)
+			if len(values[1]) < 1 {
+				continue // No empty labels
+			}
+			labels[values[0]] = values[1]
+		}
+	}
+
+	return labels
 }
 
 // Mesos volume information to Docker volume binds at runtime (equivalent to -v)
@@ -71,9 +108,9 @@ func PortBindingsForTask(taskInfo *mesos.TaskInfo) map[docker.Port][]docker.Port
 	portBinds := make(map[docker.Port][]docker.PortBinding, len(taskInfo.Container.Docker.PortMappings))
 
 	for _, port := range taskInfo.Container.Docker.PortMappings {
-		portBinds[docker.Port(strconv.Itoa(int(*port.ContainerPort)) + "/tcp")] = // TODO UDP support?
+		portBinds[docker.Port(strconv.Itoa(int(*port.ContainerPort))+"/tcp")] = // TODO UDP support?
 			[]docker.PortBinding{
-				docker.PortBinding{ HostPort: strconv.Itoa(int(*port.HostPort)) },
+				docker.PortBinding{HostPort: strconv.Itoa(int(*port.HostPort))},
 			}
 	}
 
