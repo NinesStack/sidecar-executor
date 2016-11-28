@@ -7,10 +7,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/fsouza/go-dockerclient"
 	log "github.com/Sirupsen/logrus"
+	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
+	"github.com/nitro/sidecar-executor/container"
 )
 
 type sidecarExecutor struct {
@@ -25,17 +26,20 @@ func newSidecarExecutor(client *docker.Client) *sidecarExecutor {
 }
 
 const (
-	TaskRunning = 0
+	TaskRunning  = 0
 	TaskFinished = iota
+	TaskFailed   = iota
 )
 
 func (exec *sidecarExecutor) sendStatus(status int64, taskInfo *mesos.TaskInfo) {
 	var mesosStatus *mesos.TaskState
-	switch(status) {
-		case TaskRunning:
-			mesosStatus = mesos.TaskState_TASK_RUNNING.Enum()
-		case TaskFinished:
-			mesosStatus = mesos.TaskState_TASK_FINISHED.Enum()
+	switch status {
+	case TaskRunning:
+		mesosStatus = mesos.TaskState_TASK_RUNNING.Enum()
+	case TaskFinished:
+		mesosStatus = mesos.TaskState_TASK_FINISHED.Enum()
+	case TaskFailed:
+		mesosStatus = mesos.TaskState_TASK_FAILED.Enum()
 	}
 
 	update := &mesos.TaskStatus{
@@ -71,14 +75,22 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	exec.sendStatus(TaskRunning, taskInfo)
 
-	// Do something!
-	log.Infof("Pulling Docker image '%s'", *taskInfo.Container.Docker.Image)
-	exec.client.PullImage(docker.PullImageOptions{
-			Repository: *taskInfo.Container.Docker.Image,
-		},
-		docker.AuthConfiguration{},
-	)
-	log.Info("Pulled.")
+	// TODO implement configurable pull timeout?
+	if *taskInfo.Container.Docker.ForcePullImage {
+		container.PullImage(exec.client, taskInfo)
+	}
+
+	// Configure and create the container
+	containerConfig := container.ConfigForTask(taskInfo)
+	container, err := exec.client.CreateContainer(*containerConfig)
+	if err != nil {
+		log.Error("Failed to create Docker container: %s", err.Error())
+		exec.failTask(taskInfo)
+		return
+	}
+
+	// Start the container
+	exec.client.StartContainer(container.ID, containerConfig.HostConfig)
 
 	// Tell Mesos and thus the framework that we're done
 	exec.sendStatus(TaskFinished, taskInfo)
@@ -92,6 +104,18 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// We're done with this executor, so let's stop now.
 	driver.Stop()
+}
+
+func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
+	// Tell Mesos and thus the framework that the task failed
+	exec.sendStatus(TaskFailed, taskInfo)
+
+	// Unfortunately the status updates are sent async and we can't
+	// get a handle on the channel used to send them. So we wait
+	time.Sleep(1 * time.Second)
+
+	// We're done with this executor, so let's stop now.
+	exec.driver.Stop()
 }
 
 func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesos.TaskID) {
@@ -113,6 +137,7 @@ func (exec *sidecarExecutor) Error(driver executor.ExecutorDriver, err string) {
 func init() {
 	flag.Parse()
 	log.SetOutput(os.Stdout)
+	log.SetLevel(log.DebugLevel)
 }
 
 func main() {
@@ -154,6 +179,7 @@ func main() {
 
 	log.Info("Sidecar Executor exiting")
 }
+
 /*
 {
    "resources" : [
