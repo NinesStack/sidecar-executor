@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"io/ioutil"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/nitro/sidecar-executor/container"
+	"github.com/relistan/go-director"
 )
 
 type sidecarExecutor struct {
@@ -29,6 +31,10 @@ const (
 	TaskRunning  = 0
 	TaskFinished = iota
 	TaskFailed   = iota
+)
+
+const (
+	KillTaskTimeout = 5 // seconds
 )
 
 func (exec *sidecarExecutor) sendStatus(status int64, taskInfo *mesos.TaskInfo) {
@@ -97,6 +103,19 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 		return
 	}
 
+	// TODO may need to store the handle to the looper and stop it first
+	// when killing a task.
+	looper := director.NewImmediateTimedLooper(director.FOREVER, 3*time.Second, make(chan error))
+	go exec.watchContainer(container, looper)
+
+	// Block, waiting on the looper
+	err = looper.Wait()
+	if err != nil {
+		log.Errorf("Error! %s", err.Error())
+		exec.failTask(taskInfo)
+		return
+	}
+
 	// Tell Mesos and thus the framework that we're done
 	exec.sendStatus(TaskFinished, taskInfo)
 
@@ -123,8 +142,45 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 	exec.driver.Stop()
 }
 
+func (exec *sidecarExecutor) watchContainer(container *docker.Container, looper director.Looper) {
+	looper.Loop(func() error {
+		containers, err := exec.client.ListContainers(
+			docker.ListContainersOptions{
+				All: false,
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		// Loop through all the containers, looking for a running
+		// container with our Id.
+		ok := false
+		for _, entry := range containers {
+			if entry.ID == container.ID {
+				ok = true
+			}
+		}
+		if !ok {
+			return errors.New("Container " + container.ID + " not running!")
+		}
+
+		return nil
+	})
+}
+
 func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesos.TaskID) {
-	log.Info("Kill task")
+	log.Infof("Killing task: %s", *taskID.Value)
+	err := exec.client.StopContainer(*taskID.Value, KillTaskTimeout)
+
+	if err != nil {
+		log.Errorf("Error! %s", err.Error())
+	}
+
+	// TODO should we be sending some kind of task status here?
+
+	time.Sleep(1 * time.Second)
+	exec.driver.Stop()
 }
 
 func (exec *sidecarExecutor) FrameworkMessage(driver executor.ExecutorDriver, msg string) {
