@@ -25,12 +25,9 @@ func PullImage(client DockerClient, taskInfo *mesos.TaskInfo) {
 }
 
 func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
-	cpus := getResource("cpus", taskInfo)
-
-	return &docker.CreateContainerOptions{
+	config := &docker.CreateContainerOptions{
 		Name: *taskInfo.TaskId.Value,
 		Config: &docker.Config{
-			CPUShares:    int64(*cpus.Scalar.Value * float64(1024)),
 			Env:          EnvForTask(taskInfo),
 			ExposedPorts: PortsForTask(taskInfo),
 			Image:        *taskInfo.Container.Docker.Image,
@@ -41,6 +38,20 @@ func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
 			PortBindings: PortBindingsForTask(taskInfo),
 		},
 	}
+
+	// Check for and calculate CPU shares
+	cpus := getResource("cpus", taskInfo)
+	if cpus != nil {
+		config.Config.CPUShares = int64(*cpus.Scalar.Value * float64(1024))
+	}
+
+	// Check for and calculate memory limit
+	memory := getResource("memoryMb", taskInfo)
+	if memory != nil {
+		config.Config.Memory = int64(*memory.Scalar.Value * float64(1024*1024))
+	}
+
+	return config
 }
 
 // Translate Mesos TaskInfo port records in Docker ports map. These show up as EXPOSE

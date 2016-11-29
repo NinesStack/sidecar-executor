@@ -44,6 +44,8 @@ func Test_ConfigGeneration(t *testing.T) {
 		image := "foo/foo:foo"
 		cpus := "cpus"
 		cpusValue := float64(0.5)
+		memory := "memoryMb"
+		memoryValue := float64(128)
 		env := "env"
 		envValue := "SOMETHING=123=123"
 		port := uint32(8080)
@@ -99,6 +101,10 @@ func Test_ConfigGeneration(t *testing.T) {
 					Name:   &cpus,
 					Scalar: &mesos.Value_Scalar{Value: &cpusValue},
 				},
+				{
+					Name:   &memory,
+					Scalar: &mesos.Value_Scalar{Value: &memoryValue},
+				},
 			},
 		}
 
@@ -110,6 +116,10 @@ func Test_ConfigGeneration(t *testing.T) {
 
 		Convey("properly calculates the CPU shares", func() {
 			So(opts.Config.CPUShares, ShouldEqual, float64(512))
+		})
+
+		Convey("properly calculates the memory limit", func() {
+			So(opts.Config.Memory, ShouldEqual, float64(128*1024*1024))
 		})
 
 		Convey("populates the environment", func() {

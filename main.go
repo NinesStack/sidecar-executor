@@ -62,7 +62,8 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 	}
 }
 
-func (exec *sidecarExecutor) Registered(driver executor.ExecutorDriver, execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, slaveInfo *mesos.SlaveInfo) {
+func (exec *sidecarExecutor) Registered(driver executor.ExecutorDriver,
+		execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, slaveInfo *mesos.SlaveInfo) {
 	log.Info("Registered Executor on slave ", slaveInfo.GetHostname())
 }
 
