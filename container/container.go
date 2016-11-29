@@ -48,6 +48,9 @@ func PortsForTask(taskInfo *mesos.TaskInfo) map[docker.Port]struct{} {
 	ports := make(map[docker.Port]struct{}, len(taskInfo.Container.Docker.PortMappings))
 
 	for _, port := range taskInfo.Container.Docker.PortMappings {
+		if port.ContainerPort == nil {
+			continue
+		}
 		portStr := docker.Port(strconv.Itoa(int(*port.ContainerPort)) + "/tcp") // TODO UDP support?
 		ports[portStr] = struct{}{}
 	}
@@ -62,9 +65,11 @@ func EnvForTask(taskInfo *mesos.TaskInfo) []string {
 	var envVars []string
 
 	for _, param := range taskInfo.Container.Docker.Parameters {
-		if *param.Key == "env" {
-			envVars = append(envVars, *param.Value)
+		if param.Key == nil || *param.Key != "env" {
+			continue
 		}
+
+		envVars = append(envVars, *param.Value)
 	}
 
 	return envVars
@@ -75,13 +80,16 @@ func LabelsForTask(taskInfo *mesos.TaskInfo) map[string]string {
 	labels := make(map[string]string, len(taskInfo.Container.Docker.Parameters))
 
 	for _, param := range taskInfo.Container.Docker.Parameters {
-		if *param.Key == "label" {
-			values := strings.SplitN(*param.Value, "=", 1)
-			if len(values[1]) < 1 {
-				continue // No empty labels
-			}
-			labels[values[0]] = values[1]
+		if param.Key == nil || *param.Key != "label" {
+			continue
 		}
+
+		values := strings.SplitN(*param.Value, "=", 2)
+		if len(values) < 2 {
+			log.Debugf("Got label with empty value: %s", *param.Key)
+			continue // No empty labels
+		}
+		labels[values[0]] = values[1]
 	}
 
 	return labels
@@ -108,6 +116,9 @@ func PortBindingsForTask(taskInfo *mesos.TaskInfo) map[docker.Port][]docker.Port
 	portBinds := make(map[docker.Port][]docker.PortBinding, len(taskInfo.Container.Docker.PortMappings))
 
 	for _, port := range taskInfo.Container.Docker.PortMappings {
+		if port.HostPort == nil {
+			continue
+		}
 		portBinds[docker.Port(strconv.Itoa(int(*port.ContainerPort))+"/tcp")] = // TODO UDP support?
 			[]docker.PortBinding{
 				docker.PortBinding{HostPort: strconv.Itoa(int(*port.HostPort))},
