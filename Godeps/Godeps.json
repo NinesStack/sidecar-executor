@@ -135,6 +135,10 @@
 			"Rev": "dee7705ef7b324f27ceb85a121c61f2c2e8ce988"
 		},
 		{
+			"ImportPath": "github.com/relistan/go-director",
+			"Rev": "9273dae8c839a114aa4472165f84e057d5b12e09"
+		},
+		{
 			"ImportPath": "golang.org/x/net/context",
 			"Rev": "ef00b378c73f107bf44d5c9b69875255ce89b79a"
 		},
