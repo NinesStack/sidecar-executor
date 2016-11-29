@@ -109,13 +109,16 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// TODO may need to store the handle to the looper and stop it first
 	// when killing a task.
-	log.Infof("Monitoring container %s for Mesos task %s", container.ID[:12], *taskInfo.TaskId.Value)
 	looper := director.NewImmediateTimedLooper(director.FOREVER, 3*time.Second, make(chan error))
 
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
+	go exec.watchContainer(container, looper)
 	go func() {
-		go exec.watchContainer(container, looper)
+		log.Infof("Monitoring container %s for Mesos task %s",
+			container.ID[:12],
+			*taskInfo.TaskId.Value,
+		)
 		err = looper.Wait()
 		if err != nil {
 			log.Errorf("Error! %s", err.Error())
@@ -246,126 +249,3 @@ func main() {
 
 	log.Info("Sidecar Executor exiting")
 }
-
-/*
-{
-   "resources" : [
-      {
-         "type" : 1,
-         "name" : "ports",
-         "ranges" : {
-            "range" : [
-               {
-                  "begin" : 31711,
-                  "end" : 31711
-               }
-            ]
-         }
-      },
-      {
-         "name" : "cpus",
-         "scalar" : {
-            "value" : 0.1
-         },
-         "type" : 0
-      },
-      {
-         "name" : "mem",
-         "scalar" : {
-            "value" : 128
-         },
-         "type" : 0
-      }
-   ],
-   "labels" : {},
-   "slave_id" : {
-      "value" : "48647419-b03c-48f3-b938-2c2ad869eaab-S1"
-   },
-   "executor" : {
-      "framework_id" : {
-         "value" : "Singularity"
-      },
-      "source" : "nginx-2392676-1479746264572-1-NEW_DEPLOY-1479746261223",
-      "command" : {
-         "value" : "/home/kmatthias/sidecar-executor",
-         "environment" : {
-            "variables" : [
-               {
-                  "name" : "INSTANCE_NO",
-                  "value" : "1"
-               },
-               {
-                  "value" : "dev-singularity-sick-sing",
-                  "name" : "TASK_HOST"
-               },
-               {
-                  "name" : "TASK_REQUEST_ID",
-                  "value" : "nginx"
-               },
-               {
-                  "name" : "TASK_DEPLOY_ID",
-                  "value" : "2392676"
-               },
-               {
-                  "value" : "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT",
-                  "name" : "TASK_ID"
-               },
-               {
-                  "name" : "ESTIMATED_INSTANCE_COUNT",
-                  "value" : "3"
-               },
-               {
-                  "name" : "PORT",
-                  "value" : "31711"
-               },
-               {
-                  "value" : "31711",
-                  "name" : "PORT0"
-               }
-            ]
-         }
-      },
-      "executor_id" : {
-         "value" : "s1"
-      }
-   },
-   "name" : "nginx",
-   "task_id" : {
-      "value" : "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
-   },
-   "container" : {
-      "docker" : {
-         "network" : 2,
-         "parameters" : [
-            {
-               "value" : "ServiceName=nginx",
-               "key" : "label"
-            },
-            {
-               "key" : "label",
-               "value" : "ServicePort_80=11000"
-            },
-            {
-               "value" : "HealthCheck=HttpGet",
-               "key" : "label"
-            },
-            {
-               "key" : "label",
-               "value" : "HealthCheckArgs=http://{{ host }}:{{ tcp 11000 }}/"
-            }
-         ],
-         "force_pull_image" : false,
-         "privileged" : false,
-         "image" : "nginx:latest",
-         "port_mappings" : [
-            {
-               "protocol" : "tcp",
-               "container_port" : 80,
-               "host_port" : 31711
-            }
-         ]
-      },
-      "type" : 1
-   }
-}
-*/
