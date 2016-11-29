@@ -115,7 +115,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
 	go func() {
-		exec.watchContainer(container, looper)
+		go exec.watchContainer(container, looper)
 		err = looper.Wait()
 		if err != nil {
 			log.Errorf("Error! %s", err.Error())
