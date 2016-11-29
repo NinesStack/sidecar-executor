@@ -9,6 +9,70 @@
 			"Rev": "cd7d1bbe41066b6c1f19780f895901052150a575"
 		},
 		{
+			"ImportPath": "github.com/docker/docker/opts",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/archive",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/fileutils",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/homedir",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/idtools",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/ioutils",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/longpath",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/pools",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/promise",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/stdcopy",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/system",
+			"Comment": "v1.4.1-12113-g16e6211",
+			"Rev": "16e6211cf7ffcdaae11e4ded61d0e15b52c1c8a4"
+		},
+		{
+			"ImportPath": "github.com/docker/go-units",
+			"Comment": "v0.3.0",
+			"Rev": "5d2041e26a699eaca682e2ea41c8f891e1060444"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient",
+			"Rev": "3134ad4ea8f8a04974cde3ef3958e265c605b0c1"
+		},
+		{
 			"ImportPath": "github.com/gogo/protobuf/proto",
 			"Comment": "v0.1-115-gc57e439",
 			"Rev": "c57e439bad574c2e0877ff18d514badcfced004d"
@@ -16,6 +80,10 @@
 		{
 			"ImportPath": "github.com/golang/glog",
 			"Rev": "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/go-cleanhttp",
+			"Rev": "ad28ea4487f05916463e2423a55166280e8254b5"
 		},
 		{
 			"ImportPath": "github.com/mesos/mesos-go/executor",
@@ -56,6 +124,11 @@
 			"ImportPath": "github.com/mesos/mesos-go/upid",
 			"Comment": "before-0.26-protos-41-g24208b5",
 			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
+		},
+		{
+			"ImportPath": "github.com/opencontainers/runc/libcontainer/user",
+			"Comment": "v0.1.1-93-gc6a791b",
+			"Rev": "c6a791bef906b0dfdf81e85b840bec475b8ec75e"
 		},
 		{
 			"ImportPath": "github.com/pborman/uuid",
