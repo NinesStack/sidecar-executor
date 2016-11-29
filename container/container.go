@@ -25,6 +25,7 @@ func PullImage(client DockerClient, taskInfo *mesos.TaskInfo) {
 }
 
 func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
+
 	config := &docker.CreateContainerOptions{
 		Name: *taskInfo.TaskId.Value,
 		Config: &docker.Config{
@@ -36,6 +37,7 @@ func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
 		HostConfig: &docker.HostConfig{
 			Binds:        BindsForTask(taskInfo),
 			PortBindings: PortBindingsForTask(taskInfo),
+			NetworkMode:  NetworkForTask(taskInfo),
 		},
 	}
 
@@ -139,6 +141,24 @@ func PortBindingsForTask(taskInfo *mesos.TaskInfo) map[docker.Port][]docker.Port
 	log.Debugf("Port Bindings: %#v", portBinds)
 
 	return portBinds
+}
+
+// Map Mesos enum to strings for Docker
+func NetworkForTask(taskInfo *mesos.TaskInfo) string {
+	var networkMode string
+
+	switch *taskInfo.Container.Docker.Network {
+	case mesos.ContainerInfo_DockerInfo_HOST:
+		networkMode = "host"
+	case mesos.ContainerInfo_DockerInfo_BRIDGE:
+		networkMode = "default"
+	case mesos.ContainerInfo_DockerInfo_NONE:
+		networkMode = "none"
+	default:
+		networkMode = "default"
+	}
+
+	return networkMode
 }
 
 func getResource(name string, taskInfo *mesos.TaskInfo) *mesos.Resource {

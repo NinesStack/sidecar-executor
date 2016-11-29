@@ -48,6 +48,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		memoryValue := float64(128)
 		env := "env"
 		envValue := "SOMETHING=123=123"
+		host := mesos.ContainerInfo_DockerInfo_HOST
 		port := uint32(8080)
 		port2 := uint32(443)
 		port2_hp := uint32(10270)
@@ -64,6 +65,7 @@ func Test_ConfigGeneration(t *testing.T) {
 			Container: &mesos.ContainerInfo{
 				Docker: &mesos.ContainerInfo_DockerInfo{
 					Image: &image,
+					Network: &host,
 					Parameters: []*mesos.Parameter{
 						{
 							Key:   &env,
@@ -150,6 +152,17 @@ func Test_ConfigGeneration(t *testing.T) {
 		Convey("handles port bindings", func() {
 			So(len(opts.HostConfig.PortBindings), ShouldEqual, 1)
 			So(opts.HostConfig.PortBindings["443/tcp"][0].HostPort, ShouldEqual, "10270")
+		})
+
+		Convey("uses the right network mode when it's set", func() {
+			So(opts.HostConfig.NetworkMode, ShouldEqual, "host")
+		})
+
+		Convey("defaults to correct network mode", func() {
+			none := mesos.ContainerInfo_DockerInfo_NONE
+			taskInfo.Container.Docker.Network = &none
+			opts := ConfigForTask(taskInfo)
+			So(opts.HostConfig.NetworkMode, ShouldEqual, "none")
 		})
 	})
 }
