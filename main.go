@@ -31,13 +31,14 @@ const (
 	TaskRunning  = 0
 	TaskFinished = iota
 	TaskFailed   = iota
+	TaskKilled   = iota
 )
 
 const (
 	KillTaskTimeout = 5 // seconds
 )
 
-func (exec *sidecarExecutor) sendStatus(status int64, taskInfo *mesos.TaskInfo) {
+func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 	var mesosStatus *mesos.TaskState
 	switch status {
 	case TaskRunning:
@@ -46,10 +47,12 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskInfo *mesos.TaskInfo) 
 		mesosStatus = mesos.TaskState_TASK_FINISHED.Enum()
 	case TaskFailed:
 		mesosStatus = mesos.TaskState_TASK_FAILED.Enum()
+	case TaskKilled:
+		mesosStatus = mesos.TaskState_TASK_KILLED.Enum()
 	}
 
 	update := &mesos.TaskStatus{
-		TaskId: taskInfo.GetTaskId(),
+		TaskId: taskId,
 		State:  mesosStatus,
 	}
 
@@ -79,7 +82,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	info, _ := json.Marshal(taskInfo)
 	ioutil.WriteFile("/tmp/taskinfo.json", info, os.ModeAppend)
 
-	exec.sendStatus(TaskRunning, taskInfo)
+	exec.sendStatus(TaskRunning, taskInfo.GetTaskId())
 
 	// TODO implement configurable pull timeout?
 	if *taskInfo.Container.Docker.ForcePullImage {
@@ -96,6 +99,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	}
 
 	// Start the container
+	log.Info("Starting container with ID " + container.ID[:12])
 	err = exec.client.StartContainer(container.ID, containerConfig.HostConfig)
 	if err != nil {
 		log.Error("Failed to create Docker container: %s", err.Error())
@@ -105,34 +109,36 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// TODO may need to store the handle to the looper and stop it first
 	// when killing a task.
+	log.Infof("Monitoring container %s for Mesos task %s", container.ID[:12], *taskInfo.TaskId.Value)
 	looper := director.NewImmediateTimedLooper(director.FOREVER, 3*time.Second, make(chan error))
-	go exec.watchContainer(container, looper)
 
-	// Block, waiting on the looper
-	err = looper.Wait()
-	if err != nil {
-		log.Errorf("Error! %s", err.Error())
-		exec.failTask(taskInfo)
+	// We have to do this in a different goroutine or the scheduler
+	// can't send us any further updates.
+	go func() {
+		exec.watchContainer(container, looper)
+		err = looper.Wait()
+		if err != nil {
+			log.Errorf("Error! %s", err.Error())
+			exec.failTask(taskInfo)
+			return
+		}
+
+		exec.finishTask(taskInfo)
+		log.Info("Task completed: ", taskInfo.GetName())
 		return
-	}
-
-	// Tell Mesos and thus the framework that we're done
-	exec.sendStatus(TaskFinished, taskInfo)
-
-	log.Info("Task completed: ", taskInfo.GetName())
-
-	// Unfortunately the status updates are sent async and we can't
-	// get a handle on the channel used to send them. So we wait
-	// and pray that it completes in a second.
-	time.Sleep(1 * time.Second)
-
-	// We're done with this executor, so let's stop now.
-	driver.Stop()
+	}()
 }
 
+// Tell Mesos and thus the framework that the task finished. Shutdown driver.
+func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
+	exec.sendStatus(TaskFinished, taskInfo.GetTaskId())
+	time.Sleep(1 * time.Second)
+	exec.driver.Stop()
+}
+
+// Tell Mesos and thus the framework that the task failed. Shutdown driver.
 func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
-	// Tell Mesos and thus the framework that the task failed
-	exec.sendStatus(TaskFailed, taskInfo)
+	exec.sendStatus(TaskFailed, taskInfo.GetTaskId())
 
 	// Unfortunately the status updates are sent async and we can't
 	// get a handle on the channel used to send them. So we wait
@@ -146,7 +152,7 @@ func (exec *sidecarExecutor) watchContainer(container *docker.Container, looper 
 	looper.Loop(func() error {
 		containers, err := exec.client.ListContainers(
 			docker.ListContainersOptions{
-				All: false,
+				All: true,
 			},
 		)
 		if err != nil {
@@ -177,7 +183,7 @@ func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *me
 		log.Errorf("Error! %s", err.Error())
 	}
 
-	// TODO should we be sending some kind of task status here?
+	exec.sendStatus(TaskKilled, taskID)
 
 	time.Sleep(1 * time.Second)
 	exec.driver.Stop()
