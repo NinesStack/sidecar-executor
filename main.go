@@ -95,10 +95,6 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	log.Infof("Launching task %s with command '%s'", taskInfo.GetName(), taskInfo.Command.GetValue())
 	log.Info("Task ID ", taskInfo.GetTaskId().GetValue())
 
-	// Store the task info we were passed so we can look at it
-	info, _ := json.Marshal(taskInfo)
-	ioutil.WriteFile("/tmp/taskinfo.json", info, os.ModeAppend)
-
 	exec.sendStatus(TaskRunning, taskInfo.GetTaskId())
 
 	// TODO implement configurable pull timeout?
