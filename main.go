@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"time"
 
@@ -12,20 +13,10 @@ import (
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
+	"github.com/newrelic/sidecar/service"
 	"github.com/nitro/sidecar-executor/container"
 	"github.com/relistan/go-director"
 )
-
-type sidecarExecutor struct {
-	driver *executor.MesosExecutorDriver
-	client *docker.Client
-}
-
-func newSidecarExecutor(client *docker.Client) *sidecarExecutor {
-	return &sidecarExecutor{
-		client: client,
-	}
-}
 
 const (
 	TaskRunning  = 0
@@ -35,8 +26,32 @@ const (
 )
 
 const (
-	KillTaskTimeout = 5 // seconds
+	KillTaskTimeout   = 5 // seconds
+	HttpTimeout       = 2 * time.Second
+	SidecarRetryCount = 5
+	SidecarRetryDelay = 3 * time.Second // Delay on retrying Sidecar call
+	SidecarUrl        = "http://localhost:7777/state.json"
+	SidecarBackoff    = 1 * time.Minute // How long before we start health checking?
 )
+
+type sidecarExecutor struct {
+	driver     *executor.MesosExecutorDriver
+	client     *docker.Client
+	httpClient *http.Client
+}
+
+type SidecarServices struct {
+	Servers map[string]struct{
+		Services map[string]service.Service
+	}
+}
+
+func newSidecarExecutor(client *docker.Client) *sidecarExecutor {
+	return &sidecarExecutor{
+		client:     client,
+		httpClient: &http.Client{Timeout: HttpTimeout},
+	}
+}
 
 func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 	var mesosStatus *mesos.TaskState
@@ -63,7 +78,7 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 }
 
 func (exec *sidecarExecutor) Registered(driver executor.ExecutorDriver,
-		execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, slaveInfo *mesos.SlaveInfo) {
+	execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, slaveInfo *mesos.SlaveInfo) {
 	log.Info("Registered Executor on slave ", slaveInfo.GetHostname())
 }
 
@@ -153,6 +168,8 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 }
 
 func (exec *sidecarExecutor) watchContainer(container *docker.Container, looper director.Looper) {
+	time.Sleep(SidecarBackoff)
+
 	looper.Loop(func() error {
 		containers, err := exec.client.ListContainers(
 			docker.ListContainersOptions{
@@ -175,8 +192,79 @@ func (exec *sidecarExecutor) watchContainer(container *docker.Container, looper 
 			return errors.New("Container " + container.ID + " not running!")
 		}
 
+		// Validate health status with Sidecar
+		if err = exec.sidecarStatus(container); err != nil {
+			return err
+		}
+
 		return nil
 	})
+}
+
+func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
+	fetch := func() ([]byte, error) {
+		resp, err := exec.httpClient.Get(SidecarUrl)
+		defer resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		return body, nil
+	}
+
+	// Try to connect to Sidecar, with some retries
+	var err error
+	var data []byte
+	for i := 0; i < SidecarRetryCount; i++ {
+		data, err = fetch()
+		if err != nil {
+			continue
+		}
+	}
+
+	// We really really don't want to shut off all the jobs if Sidecar
+	// is down. That would make it impossible to deploy Sidecar, and
+	// would make the entire system dependent on it for services to
+	// even start.
+	if err != nil {
+		log.Error("Can't contact Sidecar! Assuming healthy...")
+		return nil
+	}
+
+	// We got a successful result from Sidecar, so let's parse it!
+	var services SidecarServices
+	err = json.Unmarshal(data, &services)
+	if err != nil {
+		log.Error("Can't parse Sidecar results! Assuming healthy...")
+		return nil
+	}
+
+	// Don't know WTF is going on to get here, probably a race condition
+	hostname, _ := os.Hostname()
+	if _, ok := services.Servers[hostname]; !ok {
+		log.Errorf("Can't find this server ('%s') in the Sidecar state! Assuming healthy...", hostname)
+		return nil
+	}
+
+	svc, ok := services.Servers[hostname].Services[container.ID[:12]]
+	if !ok {
+		log.Errorf("Can't find this service in Sidecar yet! Assuming healthy...")
+		return nil
+	}
+
+	// This is the one and only place where we're going to raise our hand
+	// and say something is wrong with this service and it needs to be
+	// shot by Mesos.
+	if svc.Status == service.UNHEALTHY || svc.Status == service.TOMBSTONE {
+		return errors.New("Unhealthy container: " + container.ID + " failing task!")
+	}
+
+	return nil
 }
 
 func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesos.TaskID) {
