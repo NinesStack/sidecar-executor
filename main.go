@@ -26,12 +26,13 @@ const (
 )
 
 const (
-	KillTaskTimeout   = 5 // seconds
-	HttpTimeout       = 2 * time.Second
-	SidecarRetryCount = 5
-	SidecarRetryDelay = 3 * time.Second // Delay on retrying Sidecar call
-	SidecarUrl        = "http://localhost:7777/state.json"
-	SidecarBackoff    = 1 * time.Minute // How long before we start health checking?
+	KillTaskTimeout     = 5 // seconds
+	HttpTimeout         = 2 * time.Second
+	SidecarRetryCount   = 5
+	SidecarRetryDelay   = 3 * time.Second // Delay on retrying Sidecar call
+	SidecarUrl          = "http://localhost:7777/state.json"
+	SidecarBackoff      = 1 * time.Minute // How long before we start health checking?
+	SidecarPollInterval = 30 * time.Second
 )
 
 type sidecarExecutor struct {
@@ -41,7 +42,7 @@ type sidecarExecutor struct {
 }
 
 type SidecarServices struct {
-	Servers map[string]struct{
+	Servers map[string]struct {
 		Services map[string]service.Service
 	}
 }
@@ -125,7 +126,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// TODO may need to store the handle to the looper and stop it first
 	// when killing a task.
-	looper := director.NewImmediateTimedLooper(director.FOREVER, 3*time.Second, make(chan error))
+	looper := director.NewImmediateTimedLooper(director.FOREVER, SidecarPollInterval, make(chan error))
 
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
