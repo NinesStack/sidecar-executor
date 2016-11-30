@@ -1,6 +1,9 @@
 Sidecar Executor
 ===============
 
+Run Docker containers on Mesos with
+[Sidecar](https://github.com/newrelic/sidecar) service discovery!
+
 This is a Mesos executor that integrates with the service discovery platform
 [Sidecar](https://github.com/newrelic/sidecar) to more tightly tie Sidecar into
 the Mesos ecosystem. The main advantage is that the executor leverages the
