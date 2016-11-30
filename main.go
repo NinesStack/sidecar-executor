@@ -182,12 +182,27 @@ func (exec *sidecarExecutor) watchContainer(container *docker.Container, looper 
 func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesos.TaskID) {
 	log.Infof("Killing task: %s", *taskID.Value)
 	err := exec.client.StopContainer(*taskID.Value, KillTaskTimeout)
-
 	if err != nil {
-		log.Errorf("Error! %s", err.Error())
+		log.Errorf("Error stopping container %s! %s", *taskID.Value, err.Error())
 	}
 
-	exec.sendStatus(TaskKilled, taskID)
+	// Have to force this to be an int64
+	var status int64 = TaskKilled // Default status is that we shot it in the head
+
+	// Now we need to sort out whether the task finished nicely or not.
+	// This driver callback is used both to shoot a task in the head, and when
+	// a task is being replaced. The Mesos task status needs to reflect the
+	// resulting container State.ExitCode.
+	container, err := exec.client.InspectContainer(*taskID.Value)
+	if err == nil {
+		if container.State.ExitCode == 0 {
+			status = TaskFinished // We exited cleanly when asked
+		}
+	} else {
+		log.Errorf("Error inspecting container %s! %s", *taskID.Value, err.Error())
+	}
+
+	exec.sendStatus(status, taskID)
 
 	time.Sleep(1 * time.Second)
 	exec.driver.Stop()
