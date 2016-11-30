@@ -245,7 +245,7 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 	}
 
 	// Don't know WTF is going on to get here, probably a race condition
-	hostname, _ := os.Hostname()
+	hostname := os.Getenv("TASK_HOST") // Mesos supplies this
 	if _, ok := services.Servers[hostname]; !ok {
 		log.Errorf("Can't find this server ('%s') in the Sidecar state! Assuming healthy...", hostname)
 		return nil
