@@ -126,6 +126,16 @@
 			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
 		},
 		{
+			"ImportPath": "github.com/newrelic/sidecar/output",
+			"Comment": "v1.0.0-14-gc51b494",
+			"Rev": "c51b4941b0e98deda7796f9be67fbb13acd6c507"
+		},
+		{
+			"ImportPath": "github.com/newrelic/sidecar/service",
+			"Comment": "v1.0.0-14-gc51b494",
+			"Rev": "c51b4941b0e98deda7796f9be67fbb13acd6c507"
+		},
+		{
 			"ImportPath": "github.com/opencontainers/runc/libcontainer/user",
 			"Comment": "v0.1.1-93-gc6a791b",
 			"Rev": "c6a791bef906b0dfdf81e85b840bec475b8ec75e"
