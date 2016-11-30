@@ -10,10 +10,12 @@ import (
 	mesos "github.com/mesos/mesos-go/mesosproto"
 )
 
+// Our own narrowly-scoped interface for Docker client
 type DockerClient interface {
 	PullImage(docker.PullImageOptions, docker.AuthConfiguration) error
 }
 
+// Pull the Docker image refered to in the taskInfo
 func PullImage(client DockerClient, taskInfo *mesos.TaskInfo) {
 	log.Infof("Pulling Docker image '%s' because of force pull setting", *taskInfo.Container.Docker.Image)
 	client.PullImage(docker.PullImageOptions{
@@ -24,6 +26,9 @@ func PullImage(client DockerClient, taskInfo *mesos.TaskInfo) {
 	log.Info("Pulled.")
 }
 
+// Generate a complete config with both Config and HostConfig. Does not attempt
+// to be exhaustive in support for Docker options. Supports the most commonly
+// used options. Others are not complex to add.
 func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
 
 	config := &docker.CreateContainerOptions{
@@ -38,6 +43,8 @@ func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
 			Binds:        BindsForTask(taskInfo),
 			PortBindings: PortBindingsForTask(taskInfo),
 			NetworkMode:  NetworkForTask(taskInfo),
+			CapAdd:       CapAddForTask(taskInfo),
+			CapDrop:      CapDropForTask(taskInfo),
 		},
 	}
 
@@ -73,15 +80,23 @@ func PortsForTask(taskInfo *mesos.TaskInfo) map[docker.Port]struct{} {
 	return ports
 }
 
+func getParams(key string, taskInfo *mesos.TaskInfo) (params []*mesos.Parameter) {
+	for _, param := range taskInfo.Container.Docker.Parameters {
+		if param.Key == nil || *param.Key != key {
+			continue
+		}
+
+		params = append(params, param)
+	}
+
+	return params
+}
+
 // Map Mesos environment settings to Docker environment (-e FOO=BAR)
 func EnvForTask(taskInfo *mesos.TaskInfo) []string {
 	var envVars []string
 
-	for _, param := range taskInfo.Container.Docker.Parameters {
-		if param.Key == nil || *param.Key != "env" {
-			continue
-		}
-
+	for _, param := range getParams("env", taskInfo) {
 		envVars = append(envVars, *param.Value)
 	}
 
@@ -92,11 +107,7 @@ func EnvForTask(taskInfo *mesos.TaskInfo) []string {
 func LabelsForTask(taskInfo *mesos.TaskInfo) map[string]string {
 	labels := make(map[string]string, len(taskInfo.Container.Docker.Parameters))
 
-	for _, param := range taskInfo.Container.Docker.Parameters {
-		if param.Key == nil || *param.Key != "label" {
-			continue
-		}
-
+	for _, param := range getParams("label", taskInfo) {
 		values := strings.SplitN(*param.Value, "=", 2)
 		if len(values) < 2 {
 			log.Debugf("Got label with empty value: %s", *param.Key)
@@ -143,6 +154,24 @@ func PortBindingsForTask(taskInfo *mesos.TaskInfo) map[docker.Port][]docker.Port
 	return portBinds
 }
 
+// Scan for cap-adds and generate string slice
+func CapAddForTask(taskInfo *mesos.TaskInfo) []string {
+	var params []string
+	for _, param := range getParams("cap-add", taskInfo) {
+		params = append(params, *param.Value)
+	}
+	return params
+}
+
+// Scan for cap-drops and generate string slice
+func CapDropForTask(taskInfo *mesos.TaskInfo) []string {
+	var params []string
+	for _, param := range getParams("cap-drop", taskInfo) {
+		params = append(params, *param.Value)
+	}
+	return params
+}
+
 // Map Mesos enum to strings for Docker
 func NetworkForTask(taskInfo *mesos.TaskInfo) string {
 	var networkMode string
@@ -161,6 +190,7 @@ func NetworkForTask(taskInfo *mesos.TaskInfo) string {
 	return networkMode
 }
 
+// Loop through the resource slice and return the named resource
 func getResource(name string, taskInfo *mesos.TaskInfo) *mesos.Resource {
 	for _, resource := range taskInfo.Resources {
 		if *resource.Name == name {

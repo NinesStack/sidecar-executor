@@ -40,20 +40,31 @@ func Test_PullImage(t *testing.T) {
 
 func Test_ConfigGeneration(t *testing.T) {
 	Convey("Generating the Docker config from a Mesos Task", t, func() {
+
+		// The whole structure is full of pointers, so we have to define
+		// a bunch of things so we can take their address.
 		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
 		image := "foo/foo:foo"
 		cpus := "cpus"
 		cpusValue := float64(0.5)
 		memory := "memoryMb"
 		memoryValue := float64(128)
+
 		env := "env"
 		envValue := "SOMETHING=123=123"
+		label := "label"
+		labelValue := "ANYTHING=123=123"
+		capAdd := "cap-add"
+		capAddValue := "NET_ADMIN"
+		capDrop := "cap-drop"
+		capDropValue := "NET_ADMIN"
+
 		host := mesos.ContainerInfo_DockerInfo_HOST
+
 		port := uint32(8080)
 		port2 := uint32(443)
 		port2_hp := uint32(10270)
-		label := "label"
-		labelValue := "ANYTHING=123=123"
+
 		v1_cp := "/tmp/somewhere"
 		v1_hp := "/tmp/elsewhere"
 		v2_cp := "/tmp/foo"
@@ -74,6 +85,14 @@ func Test_ConfigGeneration(t *testing.T) {
 						{
 							Key:   &label,
 							Value: &labelValue,
+						},
+						{
+							Key:   &capAdd,
+							Value: &capAddValue,
+						},
+						{
+							Key:   &capDrop,
+							Value: &capDropValue,
 						},
 					},
 					PortMappings: []*mesos.ContainerInfo_DockerInfo_PortMapping{
@@ -141,6 +160,16 @@ func Test_ConfigGeneration(t *testing.T) {
 		Convey("gets the labels", func() {
 			So(len(opts.Config.Labels), ShouldEqual, 1)
 			So(opts.Config.Labels["ANYTHING"], ShouldEqual, "123=123")
+		})
+
+		Convey("gets the cap-adds", func() {
+			So(len(opts.HostConfig.CapAdd), ShouldEqual, 1)
+			So(opts.HostConfig.CapAdd[0], ShouldEqual, "NET_ADMIN")
+		})
+
+		Convey("gets the cap-drops", func() {
+			So(len(opts.HostConfig.CapDrop), ShouldEqual, 1)
+			So(opts.HostConfig.CapDrop[0], ShouldEqual, "NET_ADMIN")
 		})
 
 		Convey("grabs and formats volume binds properly", func() {
