@@ -11,6 +11,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
+	"github.com/kelseyhightower/envconfig"
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/newrelic/sidecar/service"
@@ -25,15 +26,19 @@ const (
 	TaskKilled   = iota
 )
 
-const (
-	KillTaskTimeout     = 5 // seconds
-	HttpTimeout         = 2 * time.Second
-	SidecarRetryCount   = 5
-	SidecarRetryDelay   = 3 * time.Second // Delay on retrying Sidecar call
-	SidecarUrl          = "http://localhost:7777/state.json"
-	SidecarBackoff      = 1 * time.Minute // How long before we start health checking?
-	SidecarPollInterval = 30 * time.Second
+var (
+	config Config
 )
+
+type Config struct {
+	KillTaskTimeout     uint          `envconfig:"multi_word_var" default:"5"` // Seconds
+	HttpTimeout         time.Duration `envconfig:"multi_word_var" default:"2s"`
+	SidecarRetryCount   int           `envconfig:"multi_word_var" default:"5"`
+	SidecarRetryDelay   time.Duration `envconfig:"multi_word_var" default:"3s"`
+	SidecarUrl          string        `envconfig:"multi_word_var" default:"http://localhost:7777/state.json"`
+	SidecarBackoff      time.Duration `envconfig:"multi_word_var" default:"1m"`
+	SidecarPollInterval time.Duration `envconfig:"multi_word_var" default:"30s"`
+}
 
 type sidecarExecutor struct {
 	driver     *executor.MesosExecutorDriver
@@ -50,8 +55,20 @@ type SidecarServices struct {
 func newSidecarExecutor(client *docker.Client) *sidecarExecutor {
 	return &sidecarExecutor{
 		client:     client,
-		httpClient: &http.Client{Timeout: HttpTimeout},
+		httpClient: &http.Client{Timeout: config.HttpTimeout},
 	}
+}
+
+func logConfig() {
+	log.Infof("Executor Config -----------------------")
+	log.Infof(" * KillTaskTimeout:     %d", config.KillTaskTimeout)
+	log.Infof(" * HttpTimeout:         %s", config.HttpTimeout.String())
+	log.Infof(" * SidecarRetryCount:   %d", config.SidecarRetryCount)
+	log.Infof(" * SidecarRetryDelay:   %s", config.SidecarRetryDelay.String())
+	log.Infof(" * SidecarUrl:          %s", config.SidecarUrl)
+	log.Infof(" * SidecarBackoff:      %s", config.SidecarBackoff.String())
+	log.Infof(" * SidecarPollInterval: %s", config.SidecarPollInterval.String())
+	log.Infof("---------------------------------------")
 }
 
 func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
@@ -122,7 +139,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// TODO may need to store the handle to the looper and stop it first
 	// when killing a task.
-	looper := director.NewImmediateTimedLooper(director.FOREVER, SidecarPollInterval, make(chan error))
+	looper := director.NewImmediateTimedLooper(director.FOREVER, config.SidecarPollInterval, make(chan error))
 
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
@@ -165,7 +182,7 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 }
 
 func (exec *sidecarExecutor) watchContainer(container *docker.Container, looper director.Looper) {
-	time.Sleep(SidecarBackoff)
+	time.Sleep(config.SidecarBackoff)
 
 	looper.Loop(func() error {
 		containers, err := exec.client.ListContainers(
@@ -200,7 +217,7 @@ func (exec *sidecarExecutor) watchContainer(container *docker.Container, looper 
 
 func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 	fetch := func() ([]byte, error) {
-		resp, err := exec.httpClient.Get(SidecarUrl)
+		resp, err := exec.httpClient.Get(config.SidecarUrl)
 		defer resp.Body.Close()
 		if err != nil {
 			return nil, err
@@ -217,9 +234,10 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 	// Try to connect to Sidecar, with some retries
 	var err error
 	var data []byte
-	for i := 0; i < SidecarRetryCount; i++ {
+	for i := 0; i < config.SidecarRetryCount; i++ {
 		data, err = fetch()
 		if err != nil {
+			time.Sleep(config.SidecarRetryDelay)
 			continue
 		}
 	}
@@ -266,7 +284,7 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 
 func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesos.TaskID) {
 	log.Infof("Killing task: %s", *taskID.Value)
-	err := exec.client.StopContainer(*taskID.Value, KillTaskTimeout)
+	err := exec.client.StopContainer(*taskID.Value, config.KillTaskTimeout)
 	if err != nil {
 		log.Errorf("Error stopping container %s! %s", *taskID.Value, err.Error())
 	}
@@ -307,12 +325,18 @@ func (exec *sidecarExecutor) Error(driver executor.ExecutorDriver, err string) {
 
 func init() {
 	flag.Parse()
+	err := envconfig.Process("executor", &config)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
 	log.SetOutput(os.Stdout)
 	log.SetLevel(log.DebugLevel)
 }
 
 func main() {
 	log.Info("Starting Sidecar Executor")
+	logConfig()
 
 	// Get a Docker client. Without one, we can't do anything.
 	dockerClient, err := docker.NewClientFromEnv()
