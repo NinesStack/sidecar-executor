@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -41,9 +42,10 @@ type Config struct {
 }
 
 type sidecarExecutor struct {
-	driver     *executor.MesosExecutorDriver
-	client     *docker.Client
-	httpClient *http.Client
+	driver      *executor.MesosExecutorDriver
+	client      *docker.Client
+	httpClient  *http.Client
+	watchLooper director.Looper
 }
 
 type SidecarServices struct {
@@ -68,6 +70,28 @@ func logConfig() {
 	log.Infof(" * SidecarUrl:          %s", config.SidecarUrl)
 	log.Infof(" * SidecarBackoff:      %s", config.SidecarBackoff.String())
 	log.Infof(" * SidecarPollInterval: %s", config.SidecarPollInterval.String())
+
+	log.Infof("Environment ---------------------------")
+	for _, setting := range os.Environ() {
+		if (len(setting) >= 5 && setting[:5] == "MESOS") ||
+				((len(setting) >= 8) && setting[:8] == "EXECUTOR") {
+			pair := strings.Split(setting, "=")
+			log.Infof(" * %-25s: %s", pair[0], pair[1])
+		}
+	}
+	log.Infof("---------------------------------------")
+}
+
+func logTaskEnv(taskInfo *mesos.TaskInfo) {
+	env := container.EnvForTask(taskInfo)
+	if len(env) < 1 {
+		return
+	}
+
+	log.Infof("Docker Environment --------------------")
+	for _, setting := range env {
+		log.Infof(" * %s", setting)
+	}
 	log.Infof("---------------------------------------")
 }
 
@@ -112,6 +136,8 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	log.Infof("Launching task %s with command '%s'", taskInfo.GetName(), taskInfo.Command.GetValue())
 	log.Info("Task ID ", taskInfo.GetTaskId().GetValue())
 
+	logTaskEnv(taskInfo)
+
 	exec.sendStatus(TaskRunning, taskInfo.GetTaskId())
 
 	// TODO implement configurable pull timeout?
@@ -137,19 +163,17 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 		return
 	}
 
-	// TODO may need to store the handle to the looper and stop it first
-	// when killing a task.
-	looper := director.NewImmediateTimedLooper(director.FOREVER, config.SidecarPollInterval, make(chan error))
+	exec.watchLooper = director.NewImmediateTimedLooper(director.FOREVER, config.SidecarPollInterval, make(chan error))
 
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
-	go exec.watchContainer(container, looper)
+	go exec.watchContainer(container)
 	go func() {
 		log.Infof("Monitoring container %s for Mesos task %s",
 			container.ID[:12],
 			*taskInfo.TaskId.Value,
 		)
-		err = looper.Wait()
+		err = exec.watchLooper.Wait()
 		if err != nil {
 			log.Errorf("Error! %s", err.Error())
 			exec.failTask(taskInfo)
@@ -181,10 +205,10 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 	exec.driver.Stop()
 }
 
-func (exec *sidecarExecutor) watchContainer(container *docker.Container, looper director.Looper) {
+func (exec *sidecarExecutor) watchContainer(container *docker.Container) {
 	time.Sleep(config.SidecarBackoff)
 
-	looper.Loop(func() error {
+	exec.watchLooper.Loop(func() error {
 		containers, err := exec.client.ListContainers(
 			docker.ListContainersOptions{
 				All: true,
@@ -284,6 +308,10 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 
 func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesos.TaskID) {
 	log.Infof("Killing task: %s", *taskID.Value)
+
+	// Stop watching the container so we don't send the wrong task status
+	go func() { exec.watchLooper.Quit() }()
+
 	err := exec.client.StopContainer(*taskID.Value, config.KillTaskTimeout)
 	if err != nil {
 		log.Errorf("Error stopping container %s! %s", *taskID.Value, err.Error())
