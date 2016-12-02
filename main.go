@@ -11,11 +11,11 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
-	"github.com/kelseyhightower/envconfig"
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/newrelic/sidecar/service"
 	"github.com/nitro/sidecar-executor/container"
+	"github.com/relistan/envconfig"
 	"github.com/relistan/go-director"
 )
 
@@ -31,13 +31,13 @@ var (
 )
 
 type Config struct {
-	KillTaskTimeout     uint          `envconfig:"multi_word_var" default:"5"` // Seconds
-	HttpTimeout         time.Duration `envconfig:"multi_word_var" default:"2s"`
-	SidecarRetryCount   int           `envconfig:"multi_word_var" default:"5"`
-	SidecarRetryDelay   time.Duration `envconfig:"multi_word_var" default:"3s"`
-	SidecarUrl          string        `envconfig:"multi_word_var" default:"http://localhost:7777/state.json"`
-	SidecarBackoff      time.Duration `envconfig:"multi_word_var" default:"1m"`
-	SidecarPollInterval time.Duration `envconfig:"multi_word_var" default:"30s"`
+	KillTaskTimeout     uint          `split_words:"true" default:"5"` // Seconds
+	HttpTimeout         time.Duration `split_words:"true" default:"2s"`
+	SidecarRetryCount   int           `split_words:"true" default:"5"`
+	SidecarRetryDelay   time.Duration `split_words:"true" default:"3s"`
+	SidecarUrl          string        `split_words:"true" default:"http://localhost:7777/state.json"`
+	SidecarBackoff      time.Duration `split_words:"true" default:"1m"`
+	SidecarPollInterval time.Duration `split_words:"true" default:"30s"`
 }
 
 type sidecarExecutor struct {

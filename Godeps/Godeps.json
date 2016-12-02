@@ -86,11 +86,6 @@
 			"Rev": "ad28ea4487f05916463e2423a55166280e8254b5"
 		},
 		{
-			"ImportPath": "github.com/kelseyhightower/envconfig",
-			"Comment": "v1.2.0",
-			"Rev": "9aca109c9aec4633fced9717c4a09ecab3d33111"
-		},
-		{
 			"ImportPath": "github.com/mesos/mesos-go/executor",
 			"Comment": "before-0.26-protos-41-g24208b5",
 			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
@@ -148,6 +143,11 @@
 		{
 			"ImportPath": "github.com/pborman/uuid",
 			"Rev": "dee7705ef7b324f27ceb85a121c61f2c2e8ce988"
+		},
+		{
+			"ImportPath": "github.com/relistan/envconfig",
+			"Comment": "v1.2.0-3-g2d57049",
+			"Rev": "2d57049be53e7f502ca0156b69f223f7186a393a"
 		},
 		{
 			"ImportPath": "github.com/relistan/go-director",
