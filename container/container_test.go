@@ -1,6 +1,7 @@
 package container
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/fsouza/go-dockerclient"
@@ -9,7 +10,9 @@ import (
 )
 
 type mockDockerClient struct {
-	ValidOptions bool
+	ValidOptions          bool
+	Images                []docker.APIImages
+	ListImagesShouldError bool
 }
 
 func (m *mockDockerClient) PullImage(opts docker.PullImageOptions, auth docker.AuthConfiguration) error {
@@ -18,6 +21,13 @@ func (m *mockDockerClient) PullImage(opts docker.PullImageOptions, auth docker.A
 	}
 
 	return nil
+}
+
+func (m *mockDockerClient) ListImages(opts docker.ListImagesOptions) ([]docker.APIImages, error) {
+	if m.ListImagesShouldError {
+		return nil, errors.New("Something went wrong!")
+	}
+	return m.Images, nil
 }
 
 func Test_PullImage(t *testing.T) {
@@ -35,6 +45,43 @@ func Test_PullImage(t *testing.T) {
 		PullImage(dockerClient, taskInfo)
 
 		So(dockerClient.ValidOptions, ShouldBeTrue)
+	})
+}
+
+func Test_CheckImage(t *testing.T) {
+	Convey("CheckImage()", t, func() {
+		image := "gonitro/sidecar:latest"
+		images := []docker.APIImages{
+			{
+				RepoTags: []string{image, "sidecar", "sidecar:latest"},
+			},
+		}
+
+		taskInfo := &mesos.TaskInfo{
+			Container: &mesos.ContainerInfo{
+				Docker: &mesos.ContainerInfo_DockerInfo{
+					Image: &image,
+				},
+			},
+		}
+
+		dockerClient := &mockDockerClient{ Images: images }
+
+		Convey("handles errors", func() {
+			dockerClient.ListImagesShouldError = true
+			So(CheckImage(dockerClient, taskInfo), ShouldBeFalse)
+		})
+
+		Convey("matches the image", func() {
+			So(CheckImage(dockerClient, taskInfo), ShouldBeTrue)
+		})
+
+		Convey("handles missing images", func() {
+			wrong := "wrong"
+			taskInfo.Container.Docker.Image = &wrong
+			So(CheckImage(dockerClient, taskInfo), ShouldBeFalse)
+		})
+
 	})
 }
 
@@ -75,7 +122,7 @@ func Test_ConfigGeneration(t *testing.T) {
 			TaskId: &mesos.TaskID{Value: &taskId},
 			Container: &mesos.ContainerInfo{
 				Docker: &mesos.ContainerInfo_DockerInfo{
-					Image: &image,
+					Image:   &image,
 					Network: &host,
 					Parameters: []*mesos.Parameter{
 						{
