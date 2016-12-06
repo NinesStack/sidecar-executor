@@ -38,10 +38,32 @@ provide, pull requests or feature requests are welcome.
 This set of features probably supports most of the production containers out
 there.
 
+Running the Executor
+--------------------
+
+A separate copy of the executor is started for each task. The binary is small
+and only uses a few MB of memory so this is fairly cheap.
+
+But, since the executor will always be running as long as your task, it will
+have the file open and you won't be ablet to replace it (e.g. to upgrade) while
+the task is running. It's thus recommended that you run the `executor.sh`
+script as the actual executor defined in each of your tasks. That will in turn
+copy the binary from a location of your choosing to the task's sandbox and then
+execute it from there. This means that the copy of the executor used to start
+the task will remain in the sandbox directory for the life of the task and
+solves the problem nicely.
+
+To upgrade the executor you can then simply replace the binary in the defined
+location on your systems and any new tasks will start under the new copy while
+older tasks remain running under their respective version. By default the
+shell script assumes the path will be `/opt/mesos/sidecar-executor`.
+
 Contributing
 ------------
 
-Contributions are more than welcome. Bug reports with specific reproduction steps are great. If you have a code contribution you'd like to make, open a pull request with suggested code.
+Contributions are more than welcome. Bug reports with specific reproduction
+steps are great. If you have a code contribution you'd like to make, open a
+pull request with suggested code.
 
 Pull requests should:
 
