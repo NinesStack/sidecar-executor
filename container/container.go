@@ -20,19 +20,19 @@ type DockerClient interface {
 // on this repo image:tag combination.
 func CheckImage(client DockerClient, taskInfo *mesos.TaskInfo) bool {
 	images, err := client.ListImages(docker.ListImagesOptions{All: false})
-    if err != nil {
+	if err != nil {
 		log.Errorf("Failure to list Docker images: %s", err.Error())
 		return false
-    }
+	}
 
-    for _, img := range images {
+	for _, img := range images {
 		for _, tag := range img.RepoTags {
 			if tag == *taskInfo.Container.Docker.Image {
 				// Exact match, we have this image already
 				return true
 			}
 		}
-    }
+	}
 
 	return false
 }
