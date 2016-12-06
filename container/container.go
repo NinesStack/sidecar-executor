@@ -13,11 +13,33 @@ import (
 // Our own narrowly-scoped interface for Docker client
 type DockerClient interface {
 	PullImage(docker.PullImageOptions, docker.AuthConfiguration) error
+	ListImages(docker.ListImagesOptions) ([]docker.APIImages, error)
+}
+
+// Loop through all the images and see if we have one with a match
+// on this repo image:tag combination.
+func CheckImage(client DockerClient, taskInfo *mesos.TaskInfo) bool {
+	images, err := client.ListImages(docker.ListImagesOptions{All: false})
+    if err != nil {
+		log.Errorf("Failure to list Docker images: %s", err.Error())
+		return false
+    }
+
+    for _, img := range images {
+		for _, tag := range img.RepoTags {
+			if tag == *taskInfo.Container.Docker.Image {
+				// Exact match, we have this image already
+				return true
+			}
+		}
+    }
+
+	return false
 }
 
 // Pull the Docker image refered to in the taskInfo
 func PullImage(client DockerClient, taskInfo *mesos.TaskInfo) {
-	log.Infof("Pulling Docker image '%s' because of force pull setting", *taskInfo.Container.Docker.Image)
+	log.Infof("Pulling Docker image '%s'", *taskInfo.Container.Docker.Image)
 	client.PullImage(docker.PullImageOptions{
 		Repository: *taskInfo.Container.Docker.Image,
 	},
