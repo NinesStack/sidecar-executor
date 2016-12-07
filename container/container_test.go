@@ -10,9 +10,14 @@ import (
 )
 
 type mockDockerClient struct {
-	ValidOptions          bool
-	Images                []docker.APIImages
-	ListImagesShouldError bool
+	ValidOptions                bool
+	Images                      []docker.APIImages
+	ListImagesShouldError       bool
+	StopContainerShouldError    bool
+	stopContainerFails          int
+	StopContainerMaxFails       int
+	InspectContainerShouldError bool
+	Container                   *docker.Container
 }
 
 func (m *mockDockerClient) PullImage(opts docker.PullImageOptions, auth docker.AuthConfiguration) error {
@@ -28,6 +33,29 @@ func (m *mockDockerClient) ListImages(opts docker.ListImagesOptions) ([]docker.A
 		return nil, errors.New("Something went wrong!")
 	}
 	return m.Images, nil
+}
+
+func (m *mockDockerClient) StopContainer(id string, timeout uint) error {
+	if m.StopContainerShouldError {
+		m.stopContainerFails += 1
+
+		if m.stopContainerFails > m.StopContainerMaxFails {
+			return errors.New("Something went wrong!")
+		}
+	}
+	return nil
+}
+
+func (m *mockDockerClient) InspectContainer(id string) (*docker.Container, error) {
+	if m.InspectContainerShouldError {
+		return nil, errors.New("Something went wrong!")
+	}
+
+	if m.Container != nil {
+		return m.Container, nil
+	}
+
+	return nil, errors.New("Forgot to set the mock container!")
 }
 
 func Test_PullImage(t *testing.T) {
@@ -65,7 +93,7 @@ func Test_CheckImage(t *testing.T) {
 			},
 		}
 
-		dockerClient := &mockDockerClient{ Images: images }
+		dockerClient := &mockDockerClient{Images: images}
 
 		Convey("handles errors", func() {
 			dockerClient.ListImagesShouldError = true
@@ -82,6 +110,36 @@ func Test_CheckImage(t *testing.T) {
 			So(CheckImage(dockerClient, taskInfo), ShouldBeFalse)
 		})
 
+	})
+}
+
+func Test_StopContainer(t *testing.T) {
+	Convey("When stopping containers", t, func() {
+		dockerClient := &mockDockerClient{
+			StopContainerShouldError: true,
+			StopContainerMaxFails: 1,
+			Container: &docker.Container{
+				State: docker.State{
+					Status: "running",
+				},
+			},
+		}
+
+		Convey("retries stopping the container", func() {
+			err := StopContainer(dockerClient, "someid", 0)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldNotContainSubstring, "Unable to kill")
+			So(dockerClient.stopContainerFails, ShouldEqual, 2)
+		})
+
+		Convey("returns an error when it really won't stop", func() {
+			dockerClient.StopContainerMaxFails = 2
+			err := StopContainer(dockerClient, "someid", 0)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "Unable to kill")
+			So(dockerClient.stopContainerFails, ShouldEqual, 2)
+
+		})
 	})
 }
 
