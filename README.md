@@ -38,6 +38,17 @@ provide, pull requests or feature requests are welcome.
 This set of features probably supports most of the production containers out
 there.
 
+
+Debugability
+------------
+
+This executor tries to expose as much information as possible to help with the
+painful task of debugging a Mesos task failure. It logs each of the actions
+that it takes and why. And, on startup it logs both the current environment
+variables which the executor will run with, the settings for the executor, and
+the Docker environment that will be supplied to the container. This can be
+critical in understanding how a task failed.
+
 Running the Executor
 --------------------
 
@@ -57,6 +68,62 @@ To upgrade the executor you can then simply replace the binary in the defined
 location on your systems and any new tasks will start under the new copy while
 older tasks remain running under their respective version. By default the
 shell script assumes the path will be `/opt/mesos/sidecar-executor`.
+
+Configuration
+-------------
+
+Each task can be run with its own executor configuration. This is helpful when
+in situations such as needing to delay health checking for apps that are slow
+to start, allowing for longer grace periods or a larger failure count before
+shooting a container. You may configure the executor via environment variables
+in the Mesos task. These will then be present for the executor at the time that
+it runs. Note that these are separate from the environment variables used in
+the Docker container. Currently the settings available are:
+
+```
+    Setting              Default
+	------------------------------------------------------
+	KillTaskTimeout:     5
+	HttpTimeout:         2s
+	SidecarRetryCount:   5
+	SidecarRetryDelay:   3s
+	SidecarUrl:          http://localhost:7777/state.json
+	SidecarBackoff:      1m5s
+	SidecarPollInterval: 30s
+	SidecarMaxFails:     3
+```
+
+ * **KillTaskTimeout**: This is the amount of time to wait before we hard kill
+   the container. Initially we send a SIGTERM and after this timeout we follow
+   up with a SIGKILL. If your process has a clean shutdown procedure and takes
+   awhile, you may want to back this off to let it complete shutdown before
+   being hard killed by the kernel. **Note** that unlike the other settings,
+   this, for internal library reasons, is an integer in seconds and not a Go
+   time spec.
+
+ * **HttpTimeout**: The timeout when talking to Sidecar. The default should be
+   far longer than needed unless you really have something wrong.
+
+ * **SidecarRetryCount**: This is the number of times we'll retry calling to
+   Sidecar when health checking.
+
+ * **SidecarRetryDelay**: The amount of time to wait between retries when
+   contacting Sidecar.
+
+ * **SidecarUrl**: The URL to use to contact Sidecar. The default will usually
+   be the right setting.
+
+ * **SidecarBackoff**: How long to wait before we start health checking to Sidecar.
+   You want this value to be longer than the time it takes your process to start
+   up and start responding as healthy on the health check endpoint.
+
+ * **SidecarPollInterval**: The interval between asking Sidecar how healthy we
+   are.
+
+ * **SidecarMaxFails**: How many failed checks to Sidecar before we shut down
+   the container? Note that this is not just _contacting_ Sidecar. This is how
+   many _affirmed_ unhealthy checks we need to receive, each spaced apart by
+   `SidecarPollInterval`.
 
 Contributing
 ------------
