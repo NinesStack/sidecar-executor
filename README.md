@@ -93,6 +93,10 @@ the Docker container. Currently the settings available are:
 	SidecarMaxFails:     3
 ```
 
+All of the environment variables are of the form `EXECUTOR_SIDECAR_RETRY_DELAY`
+where all of the CamelCased words are split apart, and each setting is prefixed
+with `EXECUTOR_`.
+
  * **KillTaskTimeout**: This is the amount of time to wait before we hard kill
    the container. Initially we send a SIGTERM and after this timeout we follow
    up with a SIGKILL. If your process has a clean shutdown procedure and takes
