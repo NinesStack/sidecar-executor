@@ -14,6 +14,8 @@ import (
 type DockerClient interface {
 	PullImage(docker.PullImageOptions, docker.AuthConfiguration) error
 	ListImages(docker.ListImagesOptions) ([]docker.APIImages, error)
+	StopContainer(id string, timeout uint) error
+	InspectContainer(id string) (*docker.Container, error)
 }
 
 // Loop through all the images and see if we have one with a match
@@ -35,6 +37,30 @@ func CheckImage(client DockerClient, taskInfo *mesos.TaskInfo) bool {
 	}
 
 	return false
+}
+
+// Tries very hard to stop a container. Has to take a containerId instead
+// of a mesos.TaskInfo because we don't have the TaskInfo in the KillTask
+// callback from the executor driver.
+func StopContainer(client DockerClient, containerId string, timeout uint) error {
+	// Ignore error this time, we'll try again
+	client.StopContainer(containerId, timeout)
+
+	cntr, err := client.InspectContainer(containerId)
+	if err != nil {
+		return err
+	}
+
+	err = client.StopContainer(containerId, timeout)
+	if err != nil {
+		return err
+	}
+
+	if cntr.State.Status != "exited" {
+		return fmt.Errorf("Unable to kill container! %s", containerId)
+	}
+
+	return nil
 }
 
 // Pull the Docker image refered to in the taskInfo

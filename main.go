@@ -39,6 +39,7 @@ type Config struct {
 	SidecarUrl          string        `split_words:"true" default:"http://localhost:7777/state.json"`
 	SidecarBackoff      time.Duration `split_words:"true" default:"1m"`
 	SidecarPollInterval time.Duration `split_words:"true" default:"30s"`
+	SidecarMaxFails     int           `split_words:"true" default:"3"`
 }
 
 type sidecarExecutor struct {
@@ -46,6 +47,7 @@ type sidecarExecutor struct {
 	client      *docker.Client
 	httpClient  *http.Client
 	watchLooper director.Looper
+	failCount   int
 }
 
 type SidecarServices struct {
@@ -70,6 +72,7 @@ func logConfig() {
 	log.Infof(" * SidecarUrl:          %s", config.SidecarUrl)
 	log.Infof(" * SidecarBackoff:      %s", config.SidecarBackoff.String())
 	log.Infof(" * SidecarPollInterval: %s", config.SidecarPollInterval.String())
+	log.Infof(" * SidecarMaxFails:     %d", config.SidecarMaxFails)
 
 	log.Infof("Environment ---------------------------")
 	for _, setting := range os.Environ() {
@@ -85,6 +88,7 @@ func logConfig() {
 func logTaskEnv(taskInfo *mesos.TaskInfo) {
 	env := container.EnvForTask(taskInfo)
 	if len(env) < 1 {
+		log.Info("No Docker environment provided")
 		return
 	}
 
@@ -95,6 +99,7 @@ func logTaskEnv(taskInfo *mesos.TaskInfo) {
 	log.Infof("---------------------------------------")
 }
 
+// Send task status updates to Mesos via the executor driver
 func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 	var mesosStatus *mesos.TaskState
 	switch status {
@@ -119,77 +124,6 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 	}
 }
 
-func (exec *sidecarExecutor) Registered(driver executor.ExecutorDriver,
-	execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, slaveInfo *mesos.SlaveInfo) {
-	log.Info("Registered Executor on slave ", slaveInfo.GetHostname())
-}
-
-func (exec *sidecarExecutor) Reregistered(driver executor.ExecutorDriver, slaveInfo *mesos.SlaveInfo) {
-	log.Info("Re-registered Executor on slave ", slaveInfo.GetHostname())
-}
-
-func (exec *sidecarExecutor) Disconnected(driver executor.ExecutorDriver) {
-	log.Info("Executor disconnected.")
-}
-
-func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo *mesos.TaskInfo) {
-	log.Infof("Launching task %s with command '%s'", taskInfo.GetName(), taskInfo.Command.GetValue())
-	log.Info("Task ID ", taskInfo.GetTaskId().GetValue())
-
-	logTaskEnv(taskInfo)
-
-	exec.sendStatus(TaskRunning, taskInfo.GetTaskId())
-
-	log.Info("Using image '%s'", *taskInfo.Container.Docker.Image)
-
-	// TODO implement configurable pull timeout?
-	if !container.CheckImage(exec.client, taskInfo) || *taskInfo.Container.Docker.ForcePullImage {
-		container.PullImage(exec.client, taskInfo)
-	} else {
-		log.Info("Re-using existing image... already present")
-	}
-
-	// Configure and create the container
-	containerConfig := container.ConfigForTask(taskInfo)
-	container, err := exec.client.CreateContainer(*containerConfig)
-	if err != nil {
-		log.Error("Failed to create Docker container: %s", err.Error())
-		exec.failTask(taskInfo)
-		return
-	}
-
-	// Start the container
-	log.Info("Starting container with ID " + container.ID[:12])
-	err = exec.client.StartContainer(container.ID, containerConfig.HostConfig)
-	if err != nil {
-		log.Error("Failed to create Docker container: %s", err.Error())
-		exec.failTask(taskInfo)
-		return
-	}
-
-	exec.watchLooper = director.NewImmediateTimedLooper(director.FOREVER, config.SidecarPollInterval, make(chan error))
-
-	// We have to do this in a different goroutine or the scheduler
-	// can't send us any further updates.
-	go exec.watchContainer(container)
-	go func() {
-		log.Infof("Monitoring container %s for Mesos task %s",
-			container.ID[:12],
-			*taskInfo.TaskId.Value,
-		)
-		err = exec.watchLooper.Wait()
-		if err != nil {
-			log.Errorf("Error! %s", err.Error())
-			exec.failTask(taskInfo)
-			return
-		}
-
-		exec.finishTask(taskInfo)
-		log.Info("Task completed: ", taskInfo.GetName())
-		return
-	}()
-}
-
 // Tell Mesos and thus the framework that the task finished. Shutdown driver.
 func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
 	exec.sendStatus(TaskFinished, taskInfo.GetTaskId())
@@ -209,6 +143,9 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 	exec.driver.Stop()
 }
 
+// Loop on a timed basis and check the health of the process in Sidecar.
+// Note that because of the way the retries work, the loop timing is a
+// lower bound on the delay.
 func (exec *sidecarExecutor) watchContainer(container *docker.Container) {
 	time.Sleep(config.SidecarBackoff)
 
@@ -243,6 +180,7 @@ func (exec *sidecarExecutor) watchContainer(container *docker.Container) {
 	})
 }
 
+// Validate the status of this task with Sidecar
 func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 	fetch := func() ([]byte, error) {
 		resp, err := exec.httpClient.Get(config.SidecarUrl)
@@ -288,6 +226,7 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 	}
 
 	// Don't know WTF is going on to get here, probably a race condition
+	// with container startup and Sidecar status
 	hostname := os.Getenv("TASK_HOST") // Mesos supplies this
 	if _, ok := services.Servers[hostname]; !ok {
 		log.Errorf("Can't find this server ('%s') in the Sidecar state! Assuming healthy...", hostname)
@@ -304,55 +243,20 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 	// and say something is wrong with this service and it needs to be
 	// shot by Mesos.
 	if svc.Status == service.UNHEALTHY || svc.Status == service.TOMBSTONE {
+		// Only bail out if we've exceed the setting for number of failures
+		if exec.failCount < config.SidecarMaxFails {
+			exec.failCount += 1
+			log.Warnf("Failed Sidecar health check, but below fail limit")
+			return nil
+		}
+
+		log.Errorf("Health failure count exceeded %d", config.SidecarMaxFails)
+
+		exec.failCount = 0
 		return errors.New("Unhealthy container: " + container.ID + " failing task!")
 	}
 
 	return nil
-}
-
-func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesos.TaskID) {
-	log.Infof("Killing task: %s", *taskID.Value)
-
-	// Stop watching the container so we don't send the wrong task status
-	go func() { exec.watchLooper.Quit() }()
-
-	err := exec.client.StopContainer(*taskID.Value, config.KillTaskTimeout)
-	if err != nil {
-		log.Errorf("Error stopping container %s! %s", *taskID.Value, err.Error())
-	}
-
-	// Have to force this to be an int64
-	var status int64 = TaskKilled // Default status is that we shot it in the head
-
-	// Now we need to sort out whether the task finished nicely or not.
-	// This driver callback is used both to shoot a task in the head, and when
-	// a task is being replaced. The Mesos task status needs to reflect the
-	// resulting container State.ExitCode.
-	container, err := exec.client.InspectContainer(*taskID.Value)
-	if err == nil {
-		if container.State.ExitCode == 0 {
-			status = TaskFinished // We exited cleanly when asked
-		}
-	} else {
-		log.Errorf("Error inspecting container %s! %s", *taskID.Value, err.Error())
-	}
-
-	exec.sendStatus(status, taskID)
-
-	time.Sleep(1 * time.Second)
-	exec.driver.Stop()
-}
-
-func (exec *sidecarExecutor) FrameworkMessage(driver executor.ExecutorDriver, msg string) {
-	log.Info("Got framework message: ", msg)
-}
-
-func (exec *sidecarExecutor) Shutdown(driver executor.ExecutorDriver) {
-	log.Info("Shutting down the executor")
-}
-
-func (exec *sidecarExecutor) Error(driver executor.ExecutorDriver, err string) {
-	log.Info("Got error message:", err)
 }
 
 func init() {
