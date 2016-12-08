@@ -27,6 +27,10 @@ const (
 	TaskKilled   = iota
 )
 
+const (
+	StatusSleepTime = 1*time.Second // How long we wait for final status updates to hit Mesos worker
+)
+
 var (
 	config Config
 )
@@ -127,7 +131,7 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 // Tell Mesos and thus the framework that the task finished. Shutdown driver.
 func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
 	exec.sendStatus(TaskFinished, taskInfo.GetTaskId())
-	time.Sleep(1 * time.Second)
+	time.Sleep(StatusSleepTime)
 	exec.driver.Stop()
 }
 
@@ -137,7 +141,7 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 
 	// Unfortunately the status updates are sent async and we can't
 	// get a handle on the channel used to send them. So we wait
-	time.Sleep(1 * time.Second)
+	time.Sleep(StatusSleepTime)
 
 	// We're done with this executor, so let's stop now.
 	exec.driver.Stop()
@@ -178,6 +182,28 @@ func (exec *sidecarExecutor) watchContainer(container *docker.Container) {
 
 		return nil
 	})
+}
+
+// Lookup a container in a service list
+func sidecarLookup(containerId string, services SidecarServices) (*service.Service, bool) {
+	hostname := os.Getenv("TASK_HOST") // Mesos supplies this
+	if _, ok := services.Servers[hostname]; !ok {
+		// Don't even have this host!
+		return nil, ok
+	}
+
+	svc, ok := services.Servers[hostname].Services[containerId[:12]]
+
+	return &svc, ok
+}
+
+// We only want to kill things that are definitely unhealthy
+func shouldBeKilled(svc *service.Service) bool {
+	return svc.Status == service.UNHEALTHY || svc.Status == service.TOMBSTONE
+}
+
+func (exec *sidecarExecutor) exceededFailCount() bool {
+	return exec.failCount < config.SidecarMaxFails
 }
 
 // Validate the status of this task with Sidecar
@@ -225,15 +251,7 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 		return nil
 	}
 
-	// Don't know WTF is going on to get here, probably a race condition
-	// with container startup and Sidecar status
-	hostname := os.Getenv("TASK_HOST") // Mesos supplies this
-	if _, ok := services.Servers[hostname]; !ok {
-		log.Errorf("Can't find this server ('%s') in the Sidecar state! Assuming healthy...", hostname)
-		return nil
-	}
-
-	svc, ok := services.Servers[hostname].Services[container.ID[:12]]
+	svc, ok := sidecarLookup(container.ID, services)
 	if !ok {
 		log.Errorf("Can't find this service in Sidecar yet! Assuming healthy...")
 		return nil
@@ -242,9 +260,9 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 	// This is the one and only place where we're going to raise our hand
 	// and say something is wrong with this service and it needs to be
 	// shot by Mesos.
-	if svc.Status == service.UNHEALTHY || svc.Status == service.TOMBSTONE {
+	if shouldBeKilled(svc) {
 		// Only bail out if we've exceed the setting for number of failures
-		if exec.failCount < config.SidecarMaxFails {
+		if !exec.exceededFailCount() {
 			exec.failCount += 1
 			log.Warnf("Failed Sidecar health check, but below fail limit")
 			return nil
