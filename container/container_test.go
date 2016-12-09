@@ -77,7 +77,7 @@ func Test_PullImage(t *testing.T) {
 		dockerClient := &mockDockerClient{}
 
 		Convey("passes the right params", func() {
-			err := PullImage(dockerClient, taskInfo)
+			err := PullImage(dockerClient, taskInfo, &docker.AuthConfiguration{})
 
 			So(dockerClient.validOptions, ShouldBeTrue)
 			So(err, ShouldBeNil)
@@ -85,7 +85,7 @@ func Test_PullImage(t *testing.T) {
 
 		Convey("bubbles up errors", func() {
 			dockerClient.PullImageShouldError = true
-			err := PullImage(dockerClient, taskInfo)
+			err := PullImage(dockerClient, taskInfo, &docker.AuthConfiguration{})
 
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "Something went wrong")

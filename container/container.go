@@ -63,13 +63,15 @@ func StopContainer(client DockerClient, containerId string, timeout uint) error 
 	return nil
 }
 
-// Pull the Docker image refered to in the taskInfo
-func PullImage(client DockerClient, taskInfo *mesos.TaskInfo) error {
+// Pull the Docker image refered to in the taskInfo. Uses the Docker
+// credentials passed in.
+func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker.AuthConfiguration) error {
 	log.Infof("Pulling Docker image '%s'", *taskInfo.Container.Docker.Image)
-	err := client.PullImage(docker.PullImageOptions{
+	err := client.PullImage(
+		docker.PullImageOptions{
 			Repository: *taskInfo.Container.Docker.Image,
 		},
-		docker.AuthConfiguration{},
+		*authConfig,
 	)
 	if err != nil {
 		return err
