@@ -135,6 +135,13 @@ with `EXECUTOR_`.
    [described here](https://godoc.org/github.com/fsouza/go-dockerclient#NewAuthConfigurationsFromDockerCfg).
    The executor expects to use only one set of credentials for each job.
 
+Configuring Docker Connectivity
+-------------------------------
+
+Sidecar Executor supports all the normal environment variables for configuring
+your connection to the Docker daemon. It will look for `DOCKER_HOST`, etc in
+the runtime environment and configure connectivity accordingly.
+
 Contributing
 ------------
 
