@@ -28,7 +28,7 @@ const (
 )
 
 const (
-	StatusSleepTime = 1*time.Second // How long we wait for final status updates to hit Mesos worker
+	StatusSleepTime = 1 * time.Second // How long we wait for final status updates to hit Mesos worker
 )
 
 var (
@@ -44,6 +44,7 @@ type Config struct {
 	SidecarBackoff      time.Duration `split_words:"true" default:"1m"`
 	SidecarPollInterval time.Duration `split_words:"true" default:"30s"`
 	SidecarMaxFails     int           `split_words:"true" default:"3"`
+	DockerRepository    string        `split_words:"true" default:"https://index.docker.io/v1/"`
 }
 
 type sidecarExecutor struct {
@@ -51,6 +52,7 @@ type sidecarExecutor struct {
 	client      *docker.Client
 	httpClient  *http.Client
 	watchLooper director.Looper
+	dockerAuth  *docker.AuthConfiguration
 	failCount   int
 }
 
@@ -60,10 +62,11 @@ type SidecarServices struct {
 	}
 }
 
-func newSidecarExecutor(client *docker.Client) *sidecarExecutor {
+func newSidecarExecutor(client *docker.Client, auth *docker.AuthConfiguration) *sidecarExecutor {
 	return &sidecarExecutor{
 		client:     client,
 		httpClient: &http.Client{Timeout: config.HttpTimeout},
+		dockerAuth: auth,
 	}
 }
 
@@ -77,11 +80,13 @@ func logConfig() {
 	log.Infof(" * SidecarBackoff:      %s", config.SidecarBackoff.String())
 	log.Infof(" * SidecarPollInterval: %s", config.SidecarPollInterval.String())
 	log.Infof(" * SidecarMaxFails:     %d", config.SidecarMaxFails)
+	log.Infof(" * DockerRepository:    %s", config.DockerRepository)
 
 	log.Infof("Environment ---------------------------")
 	for _, setting := range os.Environ() {
 		if (len(setting) >= 5 && setting[:5] == "MESOS") ||
-				((len(setting) >= 8) && setting[:8] == "EXECUTOR") {
+			((len(setting) >= 8) && setting[:8] == "EXECUTOR") ||
+			(setting == "HOME") {
 			pair := strings.Split(setting, "=")
 			log.Infof(" * %-25s: %s", pair[0], pair[1])
 		}
@@ -277,6 +282,43 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 	return nil
 }
 
+// Try to find the Docker registry auth information. This will look in the usual
+// locations. Note that an environment variable of DOCKER_CONFIG can override the
+// other locations. If it's set, we'll look in $DOCKER_CONFIG/config.json.
+// https://godoc.org/github.com/fsouza/go-dockerclient#NewAuthConfigurationsFromDockerCfg
+func getDockerAuthConfig() docker.AuthConfiguration {
+	lookup := func() (docker.AuthConfiguration, error) {
+		// Attempt to fetch and configure Docker auth
+		auths, err := docker.NewAuthConfigurationsFromDockerCfg()
+		if err == nil {
+			if auth, ok := auths.Configs[config.DockerRepository]; ok {
+				log.Infof("Found Docker auth configuration for '%s'", config.DockerRepository)
+				return auth, nil
+			}
+		}
+
+		return docker.AuthConfiguration{}, errors.New("No auth match for repository")
+	}
+
+	// Try the first time
+	auth, err := lookup()
+	if err == nil {
+		return auth
+	}
+
+	// Set the home dir to the likely path, then try one more time
+	os.Setenv("HOME", "/root")
+	auth, err = lookup()
+	if err != nil {
+		log.Warnf(
+			"No docker auth match for repository '%s'... proceeding anyway",
+			config.DockerRepository,
+		)
+	}
+
+	return auth
+}
+
 func init() {
 	flag.Parse()
 	err := envconfig.Process("executor", &config)
@@ -295,15 +337,12 @@ func main() {
 	// Get a Docker client. Without one, we can't do anything.
 	dockerClient, err := docker.NewClientFromEnv()
 	if err != nil {
-		log.Error(err.Error())
-		os.Exit(1)
+		log.Fatal(err.Error())
 	}
 
-	scExec := newSidecarExecutor(dockerClient)
-
-	dconfig := executor.DriverConfig{
-		Executor: scExec,
-	}
+	dockerAuth := getDockerAuthConfig()
+	scExec := newSidecarExecutor(dockerClient, &dockerAuth)
+	dconfig := executor.DriverConfig{Executor: scExec}
 
 	driver, err := executor.NewMesosExecutorDriver(dconfig)
 	if err != nil || driver == nil {

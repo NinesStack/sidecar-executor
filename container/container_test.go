@@ -10,7 +10,8 @@ import (
 )
 
 type mockDockerClient struct {
-	ValidOptions                bool
+	validOptions                bool
+	PullImageShouldError        bool
 	Images                      []docker.APIImages
 	ListImagesShouldError       bool
 	StopContainerShouldError    bool
@@ -21,8 +22,12 @@ type mockDockerClient struct {
 }
 
 func (m *mockDockerClient) PullImage(opts docker.PullImageOptions, auth docker.AuthConfiguration) error {
+	if m.PullImageShouldError {
+		return errors.New("Something went wrong!")
+	}
+
 	if len(opts.Repository) > 5 && (docker.AuthConfiguration{}) == auth {
-		m.ValidOptions = true
+		m.validOptions = true
 	}
 
 	return nil
@@ -59,7 +64,7 @@ func (m *mockDockerClient) InspectContainer(id string) (*docker.Container, error
 }
 
 func Test_PullImage(t *testing.T) {
-	Convey("PullImage() passes the right params", t, func() {
+	Convey("PullImage()", t, func() {
 		image := "foo/foo:foo"
 		taskInfo := &mesos.TaskInfo{
 			Container: &mesos.ContainerInfo{
@@ -70,9 +75,21 @@ func Test_PullImage(t *testing.T) {
 		}
 
 		dockerClient := &mockDockerClient{}
-		PullImage(dockerClient, taskInfo)
 
-		So(dockerClient.ValidOptions, ShouldBeTrue)
+		Convey("passes the right params", func() {
+			err := PullImage(dockerClient, taskInfo, &docker.AuthConfiguration{})
+
+			So(dockerClient.validOptions, ShouldBeTrue)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("bubbles up errors", func() {
+			dockerClient.PullImageShouldError = true
+			err := PullImage(dockerClient, taskInfo, &docker.AuthConfiguration{})
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "Something went wrong")
+		})
 	})
 }
 

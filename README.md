@@ -91,6 +91,7 @@ the Docker container. Currently the settings available are:
 	SidecarBackoff:      1m5s
 	SidecarPollInterval: 30s
 	SidecarMaxFails:     3
+	DockerRepository:    https://index.docker.io/v1/
 ```
 
 All of the environment variables are of the form `EXECUTOR_SIDECAR_RETRY_DELAY`
@@ -128,6 +129,11 @@ with `EXECUTOR_`.
    the container? Note that this is not just _contacting_ Sidecar. This is how
    many _affirmed_ unhealthy checks we need to receive, each spaced apart by
    `SidecarPollInterval`.
+
+ * **DockerRepository**: This is used to match the credentials that we'll store
+   from the Docker config. This will follow the same matching order as
+   [described here](https://godoc.org/github.com/fsouza/go-dockerclient#NewAuthConfigurationsFromDockerCfg).
+   The executor expects to use only one set of credentials for each job.
 
 Contributing
 ------------
