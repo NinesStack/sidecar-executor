@@ -64,14 +64,20 @@ func StopContainer(client DockerClient, containerId string, timeout uint) error 
 }
 
 // Pull the Docker image refered to in the taskInfo
-func PullImage(client DockerClient, taskInfo *mesos.TaskInfo) {
+func PullImage(client DockerClient, taskInfo *mesos.TaskInfo) error {
 	log.Infof("Pulling Docker image '%s'", *taskInfo.Container.Docker.Image)
-	client.PullImage(docker.PullImageOptions{
-		Repository: *taskInfo.Container.Docker.Image,
-	},
+	err := client.PullImage(docker.PullImageOptions{
+			Repository: *taskInfo.Container.Docker.Image,
+		},
 		docker.AuthConfiguration{},
 	)
+	if err != nil {
+		return err
+	}
+
 	log.Info("Pulled.")
+
+	return nil
 }
 
 // Generate a complete config with both Config and HostConfig. Does not attempt

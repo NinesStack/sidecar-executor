@@ -38,7 +38,12 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// TODO implement configurable pull timeout?
 	if !container.CheckImage(exec.client, taskInfo) || *taskInfo.Container.Docker.ForcePullImage {
-		container.PullImage(exec.client, taskInfo)
+		err := container.PullImage(exec.client, taskInfo)
+		if err != nil {
+			log.Errorf("Failed to pull image: %s", err.Error())
+			exec.failTask(taskInfo)
+			return
+		}
 	} else {
 		log.Info("Re-using existing image... already present")
 	}
