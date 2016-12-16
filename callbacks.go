@@ -3,10 +3,10 @@ package main
 import (
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/nitro/sidecar-executor/container"
-	log "github.com/Sirupsen/logrus"
 	"github.com/relistan/go-director"
 )
 
@@ -26,12 +26,40 @@ func (exec *sidecarExecutor) Disconnected(driver executor.ExecutorDriver) {
 	log.Info("Executor disconnected.")
 }
 
+// monitorTask runs in a goroutine and hangs out, waiting for the watchLooper to
+// complete. When it completes, it handles the Docker and Mesos interactions.
+func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInfo) {
+	log.Infof("Monitoring container %s for Mesos task %s",
+		cntnrId,
+		*taskInfo.TaskId.Value,
+	)
+
+	// Wait on the watchLooper to return a status
+	err := exec.watchLooper.Wait()
+	if err != nil {
+		log.Errorf("Error! %s", err.Error())
+		// Something went wrong, we better take this thing out!
+		err := container.StopContainer(exec.client, *taskInfo.TaskId.Value, config.KillTaskTimeout)
+		if err != nil {
+			log.Errorf("Error stopping container %s! %s", *taskInfo.TaskId.Value, err.Error())
+		}
+		exec.failTask(taskInfo)
+		return
+	}
+
+	exec.finishTask(taskInfo)
+	log.Info("Task completed: ", taskInfo.GetName())
+	return
+}
+
+// Callback from Mesos driver to launch a new task in this executor
 func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo *mesos.TaskInfo) {
 	log.Infof("Launching task %s with command '%s'", taskInfo.GetName(), taskInfo.Command.GetValue())
 	log.Info("Task ID ", taskInfo.GetTaskId().GetValue())
 
 	logTaskEnv(taskInfo)
 
+	// We need to tell the scheduler that we started the task
 	exec.sendStatus(TaskRunning, taskInfo.GetTaskId())
 
 	log.Infof("Using image '%s'", *taskInfo.Container.Docker.Image)
@@ -50,7 +78,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// Configure and create the container
 	containerConfig := container.ConfigForTask(taskInfo)
-	container, err := exec.client.CreateContainer(*containerConfig)
+	cntnr, err := exec.client.CreateContainer(*containerConfig)
 	if err != nil {
 		log.Error("Failed to create Docker container: %s", err.Error())
 		exec.failTask(taskInfo)
@@ -58,8 +86,8 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	}
 
 	// Start the container
-	log.Info("Starting container with ID " + container.ID[:12])
-	err = exec.client.StartContainer(container.ID, containerConfig.HostConfig)
+	log.Info("Starting container with ID " + cntnr.ID[:12])
+	err = exec.client.StartContainer(cntnr.ID, containerConfig.HostConfig)
 	if err != nil {
 		log.Error("Failed to create Docker container: %s", err.Error())
 		exec.failTask(taskInfo)
@@ -71,23 +99,8 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
-	go exec.watchContainer(container)
-	go func() {
-		log.Infof("Monitoring container %s for Mesos task %s",
-			container.ID[:12],
-			*taskInfo.TaskId.Value,
-		)
-		err = exec.watchLooper.Wait()
-		if err != nil {
-			log.Errorf("Error! %s", err.Error())
-			exec.failTask(taskInfo)
-			return
-		}
-
-		exec.finishTask(taskInfo)
-		log.Info("Task completed: ", taskInfo.GetName())
-		return
-	}()
+	go exec.watchContainer(cntnr)
+	go exec.monitorTask(cntnr.ID[:12], taskInfo)
 }
 
 func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesos.TaskID) {

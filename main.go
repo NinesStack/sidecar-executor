@@ -234,6 +234,7 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 	for i := 0; i < config.SidecarRetryCount; i++ {
 		data, err = fetch()
 		if err != nil {
+			log.Warnf("Failed %d health checks!", i)
 			time.Sleep(config.SidecarRetryDelay)
 			continue
 		}
