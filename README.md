@@ -2,7 +2,7 @@ Sidecar Executor
 ===============
 
 Run Docker containers on Mesos with
-[Sidecar](https://github.com/newrelic/sidecar) service discovery! Were running
+[Sidecar](https://github.com/newrelic/sidecar) service discovery! We're running
 it with HubSpot's [Singularity](https://github.com/HubSpot/Singularity)
 scheduler.
 
