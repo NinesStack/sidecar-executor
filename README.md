@@ -2,7 +2,9 @@ Sidecar Executor
 ===============
 
 Run Docker containers on Mesos with
-[Sidecar](https://github.com/newrelic/sidecar) service discovery!
+[Sidecar](https://github.com/newrelic/sidecar) service discovery! Were running
+it with HubSpot's [Singularity](https://github.com/HubSpot/Singularity)
+scheduler.
 
 This is a Mesos executor that integrates with the service discovery platform
 [Sidecar](https://github.com/newrelic/sidecar) to more tightly tie Sidecar into
@@ -12,7 +14,7 @@ tasks quickly when they have gone off the rails.
 
 With Sidecar and Sidecar Executor you get service health checking unified with
 service Discovery, regardless of which Mesos scheduler you are running. The
-system is completely scheduler agnostic.
+system is completely scheduler agnostic to the extent possible.
 
 Note that _unlike_ Sidecar, Sidecar Executor assumes that tasks are to be run
 as Docker containers. You may of course still integrate non-Dockerized services
