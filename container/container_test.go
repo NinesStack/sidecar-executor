@@ -26,6 +26,7 @@ type mockDockerClient struct {
 	stopContainerFails          int
 	StopContainerMaxFails       int
 	InspectContainerShouldError bool
+	logOpts                     *docker.LogsOptions
 	Container                   *docker.Container
 }
 
@@ -72,6 +73,7 @@ func (m *mockDockerClient) InspectContainer(id string) (*docker.Container, error
 }
 
 func (m *mockDockerClient) Logs(opts docker.LogsOptions) error {
+	m.logOpts = &opts
 	opts.OutputStream.Write([]byte(prelude))
 	opts.OutputStream.(*io.PipeWriter).Close()
 	opts.ErrorStream.Write([]byte(ending))
@@ -191,6 +193,10 @@ func Test_GetLogs(t *testing.T) {
 
 		So(string(output), ShouldEqual, prelude)
 		So(string(errout), ShouldEqual, ending)
+
+		So(dockerClient.logOpts.Stdout, ShouldBeTrue)
+		So(dockerClient.logOpts.OutputStream, ShouldNotBeNil)
+		So(dockerClient.logOpts.ErrorStream, ShouldNotBeNil)
 	})
 }
 

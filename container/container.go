@@ -96,6 +96,8 @@ func GetLogs(client DockerClient, taskInfo *mesos.TaskInfo, since int64) (stdout
 			OutputStream: stdoutW,
 			ErrorStream:  stderrW,
 			Since:        since,
+			Stdout:       true,
+			Stderr:       true,
 		})
 
 		if err != nil {
