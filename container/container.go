@@ -86,15 +86,12 @@ func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker
 
 // Fetch the Docker logs from a task and return two Readers that let
 // us fetch the contents.
-func GetLogs(client DockerClient, taskId string, since int64) (stdout io.Reader, stderr io.Reader) {
-	stdoutR, stdoutW := io.Pipe()
-	stderrR, stderrW := io.Pipe()
-
+func GetLogs(client DockerClient, taskId string, since int64, stdout io.Writer, stderr io.Writer) {
 	go func() {
 		err := client.Logs(docker.LogsOptions{
 			Container:    taskId,
-			OutputStream: stdoutW,
-			ErrorStream:  stderrW,
+			OutputStream: stdout,
+			ErrorStream:  stderr,
 			Since:        since,
 			Stdout:       true,
 			Stderr:       true,
@@ -104,9 +101,6 @@ func GetLogs(client DockerClient, taskId string, since int64) (stdout io.Reader,
 			log.Errorf("Failed to fetch logs for task: %s", err.Error())
 		}
 	}()
-
-	// Regardless of what happens we return these to be read
-	return stdoutR, stderrR
 }
 
 // Generate a complete config with both Config and HostConfig. Does not attempt

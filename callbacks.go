@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"os"
 	"time"
 
@@ -33,18 +32,10 @@ func (exec *sidecarExecutor) Disconnected(driver executor.ExecutorDriver) {
 // from the Mesos API.
 func (exec *sidecarExecutor) copyLogs(taskId string) {
 	startTimeEpoch := time.Now().UTC().Add(0-config.LogsSince).Unix()
-	stdout, stderr := container.GetLogs(exec.client, taskId, startTimeEpoch)
 
-	// We don't know how much we're reading (or care), so ignore length
-	_, err := io.Copy(os.Stdout, stdout)
-	if err != nil {
-		log.Errorf("Failed to fetch stdout from container: %s", err.Error())
-	}
-
-	_, err = io.Copy(os.Stderr, stderr)
-	if err != nil {
-		log.Errorf("Failed to fetch stderr from container: %s", err.Error())
-	}
+	container.GetLogs(
+		exec.client, taskId, startTimeEpoch, os.Stdout, os.Stderr,
+	)
 }
 
 // monitorTask runs in a goroutine and hangs out, waiting for the watchLooper to

@@ -1,9 +1,8 @@
 package container
 
 import (
+	"bytes"
 	"errors"
-	"io"
-	"io/ioutil"
 	"testing"
 	"time"
 
@@ -75,9 +74,7 @@ func (m *mockDockerClient) InspectContainer(id string) (*docker.Container, error
 func (m *mockDockerClient) Logs(opts docker.LogsOptions) error {
 	m.logOpts = &opts
 	opts.OutputStream.Write([]byte(prelude))
-	opts.OutputStream.(*io.PipeWriter).Close()
 	opts.ErrorStream.Write([]byte(ending))
-	opts.ErrorStream.(*io.PipeWriter).Close()
 
 	return nil
 }
@@ -184,12 +181,15 @@ func Test_GetLogs(t *testing.T) {
 		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
 		dockerClient := &mockDockerClient{}
 
-		stdout, stderr := GetLogs(dockerClient, taskId, time.Now().UTC().Unix())
-		output, _ := ioutil.ReadAll(stdout)
-		errout, _ := ioutil.ReadAll(stderr)
+		stdout := bytes.NewBuffer(make([]byte, 0, 256))
+		stderr := bytes.NewBuffer(make([]byte, 0, 256))
 
-		So(string(output), ShouldEqual, prelude)
-		So(string(errout), ShouldEqual, ending)
+		GetLogs(dockerClient, taskId, time.Now().UTC().Unix(), stdout, stderr)
+
+		time.Sleep(1*time.Millisecond) // Nasty, but lets buffer flush
+
+		So(string(stdout.Bytes()), ShouldResemble, prelude)
+		So(string(stderr.Bytes()), ShouldResemble, ending)
 
 		So(dockerClient.logOpts.Stdout, ShouldBeTrue)
 		So(dockerClient.logOpts.OutputStream, ShouldNotBeNil)
