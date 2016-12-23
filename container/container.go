@@ -86,13 +86,13 @@ func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker
 
 // Fetch the Docker logs from a task and return two Readers that let
 // us fetch the contents.
-func GetLogs(client DockerClient, taskInfo *mesos.TaskInfo, since int64) (stdout io.Reader, stderr io.Reader) {
+func GetLogs(client DockerClient, taskId string, since int64) (stdout io.Reader, stderr io.Reader) {
 	stdoutR, stdoutW := io.Pipe()
 	stderrR, stderrW := io.Pipe()
 
 	go func() {
 		err := client.Logs(docker.LogsOptions{
-			Container:    *taskInfo.TaskId.Value,
+			Container:    taskId,
 			OutputStream: stdoutW,
 			ErrorStream:  stderrW,
 			Since:        since,

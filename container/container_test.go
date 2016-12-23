@@ -183,11 +183,8 @@ func Test_GetLogs(t *testing.T) {
 	Convey("Fetches the logs from a task", t, func() {
 		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
 		dockerClient := &mockDockerClient{}
-		taskInfo := &mesos.TaskInfo{
-			TaskId: &mesos.TaskID{Value: &taskId},
-		}
 
-		stdout, stderr := GetLogs(dockerClient, taskInfo, time.Now().UTC().Unix())
+		stdout, stderr := GetLogs(dockerClient, taskId, time.Now().UTC().Unix())
 		output, _ := ioutil.ReadAll(stdout)
 		errout, _ := ioutil.ReadAll(stderr)
 
