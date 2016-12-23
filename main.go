@@ -45,6 +45,7 @@ type Config struct {
 	SidecarPollInterval time.Duration `split_words:"true" default:"30s"`
 	SidecarMaxFails     int           `split_words:"true" default:"3"`
 	DockerRepository    string        `split_words:"true" default:"https://index.docker.io/v1/"`
+	LogsSince           time.Duration `split_words:"true" default:"3m"`
 }
 
 type sidecarExecutor struct {
@@ -81,6 +82,7 @@ func logConfig() {
 	log.Infof(" * SidecarPollInterval: %s", config.SidecarPollInterval.String())
 	log.Infof(" * SidecarMaxFails:     %d", config.SidecarMaxFails)
 	log.Infof(" * DockerRepository:    %s", config.DockerRepository)
+	log.Infof(" * LogsSince:           %s", config.LogsSince.String())
 
 	log.Infof("Environment ---------------------------")
 	for _, setting := range os.Environ() {

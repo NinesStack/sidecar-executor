@@ -2,11 +2,19 @@ package container
 
 import (
 	"errors"
+	"io"
+	"io/ioutil"
 	"testing"
+	"time"
 
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	. "github.com/smartystreets/goconvey/convey"
+)
+
+const (
+	prelude = "LO, praise of the prowess of people-kings of spear-armed Danes, in days long sped"
+	ending  = "Thus made their mourning the men of Geatland, for their hero's passing his hearth-companions"
 )
 
 type mockDockerClient struct {
@@ -61,6 +69,15 @@ func (m *mockDockerClient) InspectContainer(id string) (*docker.Container, error
 	}
 
 	return nil, errors.New("Forgot to set the mock container!")
+}
+
+func (m *mockDockerClient) Logs(opts docker.LogsOptions) error {
+	opts.OutputStream.Write([]byte(prelude))
+	opts.OutputStream.(*io.PipeWriter).Close()
+	opts.ErrorStream.Write([]byte(ending))
+	opts.ErrorStream.(*io.PipeWriter).Close()
+
+	return nil
 }
 
 func Test_PullImage(t *testing.T) {
@@ -134,7 +151,7 @@ func Test_StopContainer(t *testing.T) {
 	Convey("When stopping containers", t, func() {
 		dockerClient := &mockDockerClient{
 			StopContainerShouldError: true,
-			StopContainerMaxFails: 1,
+			StopContainerMaxFails:    1,
 			Container: &docker.Container{
 				State: docker.State{
 					Status: "running",
@@ -157,6 +174,23 @@ func Test_StopContainer(t *testing.T) {
 			So(dockerClient.stopContainerFails, ShouldEqual, 2)
 
 		})
+	})
+}
+
+func Test_GetLogs(t *testing.T) {
+	Convey("Fetches the logs from a task", t, func() {
+		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
+		dockerClient := &mockDockerClient{}
+		taskInfo := &mesos.TaskInfo{
+			TaskId: &mesos.TaskID{Value: &taskId},
+		}
+
+		stdout, stderr := GetLogs(dockerClient, taskInfo, time.Now().UTC().Unix())
+		output, _ := ioutil.ReadAll(stdout)
+		errout, _ := ioutil.ReadAll(stderr)
+
+		So(string(output), ShouldEqual, prelude)
+		So(string(errout), ShouldEqual, ending)
 	})
 }
 
