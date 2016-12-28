@@ -2,7 +2,6 @@ package container
 
 import (
 	"bytes"
-	"errors"
 	"testing"
 	"time"
 
@@ -16,69 +15,6 @@ const (
 	ending  = "Thus made their mourning the men of Geatland, for their hero's passing his hearth-companions"
 )
 
-type mockDockerClient struct {
-	validOptions                bool
-	PullImageShouldError        bool
-	Images                      []docker.APIImages
-	ListImagesShouldError       bool
-	StopContainerShouldError    bool
-	stopContainerFails          int
-	StopContainerMaxFails       int
-	InspectContainerShouldError bool
-	logOpts                     *docker.LogsOptions
-	Container                   *docker.Container
-}
-
-func (m *mockDockerClient) PullImage(opts docker.PullImageOptions, auth docker.AuthConfiguration) error {
-	if m.PullImageShouldError {
-		return errors.New("Something went wrong!")
-	}
-
-	if len(opts.Repository) > 5 && (docker.AuthConfiguration{}) == auth {
-		m.validOptions = true
-	}
-
-	return nil
-}
-
-func (m *mockDockerClient) ListImages(opts docker.ListImagesOptions) ([]docker.APIImages, error) {
-	if m.ListImagesShouldError {
-		return nil, errors.New("Something went wrong!")
-	}
-	return m.Images, nil
-}
-
-func (m *mockDockerClient) StopContainer(id string, timeout uint) error {
-	if m.StopContainerShouldError {
-		m.stopContainerFails += 1
-
-		if m.stopContainerFails > m.StopContainerMaxFails {
-			return errors.New("Something went wrong!")
-		}
-	}
-	return nil
-}
-
-func (m *mockDockerClient) InspectContainer(id string) (*docker.Container, error) {
-	if m.InspectContainerShouldError {
-		return nil, errors.New("Something went wrong!")
-	}
-
-	if m.Container != nil {
-		return m.Container, nil
-	}
-
-	return nil, errors.New("Forgot to set the mock container!")
-}
-
-func (m *mockDockerClient) Logs(opts docker.LogsOptions) error {
-	m.logOpts = &opts
-	opts.OutputStream.Write([]byte(prelude))
-	opts.ErrorStream.Write([]byte(ending))
-
-	return nil
-}
-
 func Test_PullImage(t *testing.T) {
 	Convey("PullImage()", t, func() {
 		image := "foo/foo:foo"
@@ -90,7 +26,7 @@ func Test_PullImage(t *testing.T) {
 			},
 		}
 
-		dockerClient := &mockDockerClient{}
+		dockerClient := &MockDockerClient{}
 
 		Convey("passes the right params", func() {
 			err := PullImage(dockerClient, taskInfo, &docker.AuthConfiguration{})
@@ -126,7 +62,7 @@ func Test_CheckImage(t *testing.T) {
 			},
 		}
 
-		dockerClient := &mockDockerClient{Images: images}
+		dockerClient := &MockDockerClient{Images: images}
 
 		Convey("handles errors", func() {
 			dockerClient.ListImagesShouldError = true
@@ -148,7 +84,7 @@ func Test_CheckImage(t *testing.T) {
 
 func Test_StopContainer(t *testing.T) {
 	Convey("When stopping containers", t, func() {
-		dockerClient := &mockDockerClient{
+		dockerClient := &MockDockerClient{
 			StopContainerShouldError: true,
 			StopContainerMaxFails:    1,
 			Container: &docker.Container{
@@ -179,14 +115,17 @@ func Test_StopContainer(t *testing.T) {
 func Test_GetLogs(t *testing.T) {
 	Convey("Fetches the logs from a task", t, func() {
 		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
-		dockerClient := &mockDockerClient{}
+		dockerClient := &MockDockerClient{
+			LogOutputString: prelude,
+			LogErrorString: ending,
+		}
 
 		stdout := bytes.NewBuffer(make([]byte, 0, 256))
 		stderr := bytes.NewBuffer(make([]byte, 0, 256))
 
 		GetLogs(dockerClient, taskId, time.Now().UTC().Unix(), stdout, stderr)
 
-		time.Sleep(1*time.Millisecond) // Nasty, but lets buffer flush
+		time.Sleep(1 * time.Millisecond) // Nasty, but lets buffer flush
 
 		So(string(stdout.Bytes()), ShouldResemble, prelude)
 		So(string(stderr.Bytes()), ShouldResemble, ending)

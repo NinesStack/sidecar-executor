@@ -13,11 +13,14 @@ import (
 
 // Our own narrowly-scoped interface for Docker client
 type DockerClient interface {
-	PullImage(docker.PullImageOptions, docker.AuthConfiguration) error
-	ListImages(docker.ListImagesOptions) ([]docker.APIImages, error)
-	StopContainer(id string, timeout uint) error
+	CreateContainer(opts docker.CreateContainerOptions) (*docker.Container, error)
 	InspectContainer(id string) (*docker.Container, error)
+	ListContainers(opts docker.ListContainersOptions) ([]docker.APIContainers, error)
+	ListImages(docker.ListImagesOptions) ([]docker.APIImages, error)
 	Logs(opts docker.LogsOptions) error
+	PullImage(docker.PullImageOptions, docker.AuthConfiguration) error
+	StartContainer(id string, hostConfig *docker.HostConfig) error
+	StopContainer(id string, timeout uint) error
 }
 
 // Loop through all the images and see if we have one with a match
