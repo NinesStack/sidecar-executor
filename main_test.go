@@ -20,7 +20,7 @@ type mockFetcher struct {
 	ShouldFail    bool
 	ShouldError   bool
 	ShouldBadJson bool
-	callCount   int
+	callCount     int
 }
 
 func (m *mockFetcher) Get(string) (*http.Response, error) {
@@ -44,13 +44,13 @@ func (m *mockFetcher) Get(string) (*http.Response, error) {
 func (m *mockFetcher) successRequest() (*http.Response, error) {
 	return httpResponse(200, `
 		{
-		    "Servers": {
-		        "roncevalles": {
+			"Servers": {
+				"roncevalles": {
 					"Services": {
 						"deadbeef0010": {
-		            	    "ID": "deadbeef0010",
-		            	    "Status": 0
-		            	}
+							"ID": "deadbeef0010",
+							"Status": 0
+						}
 					}
 				}
 			}
@@ -65,13 +65,13 @@ func (m *mockFetcher) badJson() (*http.Response, error) {
 func (m *mockFetcher) failedRequest() (*http.Response, error) {
 	return httpResponse(500, `
 		{
-		    "Servers": {
-		        "roncevalles": {
+			"Servers": {
+				"roncevalles": {
 					"Services": {
 						"deadbeef0010": {
-		            	    "ID": "deadbeef0010",
-		            	    "Status": 1
-		            	}
+							"ID": "deadbeef0010",
+							"Status": 1
+						}
 					}
 				}
 			}
@@ -190,7 +190,7 @@ func Test_logConfig(t *testing.T) {
 
 		v := reflect.ValueOf(config)
 		for i := 0; i < v.NumField(); i++ {
-		    So(string(output.Bytes()), ShouldContainSubstring, v.Type().Field(i).Name)
+			So(string(output.Bytes()), ShouldContainSubstring, v.Type().Field(i).Name)
 		}
 	})
 }
