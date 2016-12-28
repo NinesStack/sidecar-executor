@@ -9,10 +9,12 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/nitro/sidecar-executor/container"
+	"github.com/relistan/go-director"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -192,5 +194,33 @@ func Test_logConfig(t *testing.T) {
 		for i := 0; i < v.NumField(); i++ {
 			So(string(output.Bytes()), ShouldContainSubstring, v.Type().Field(i).Name)
 		}
+	})
+}
+
+func Test_watchContainer(t *testing.T) {
+	Convey("When watching the container", t, func() {
+		config.SidecarBackoff = time.Duration(0) // Don't wait to start health checking
+		client := &container.MockDockerClient{}
+		exec := newSidecarExecutor(client, &docker.AuthConfiguration{})
+
+		resultChan := make(chan error, 5)
+		exec.watchLooper = director.NewFreeLooper(1, resultChan)
+
+		Convey("returns an error when ListContainers fails", func() {
+			client.ListContainersShouldError = true
+			exec.watchContainer("deadbeef0010")
+
+			err := <-resultChan
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "[ListContainers()]")
+		})
+
+		Convey("returns an error when the container doesn't exist", func() {
+			exec.watchContainer("deadbeef0010")
+
+			err := <-resultChan
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "Container deadbeef0010 not running!")
+		})
 	})
 }

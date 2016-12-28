@@ -161,7 +161,7 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 // Loop on a timed basis and check the health of the process in Sidecar.
 // Note that because of the way the retries work, the loop timing is a
 // lower bound on the delay.
-func (exec *sidecarExecutor) watchContainer(container *docker.Container) {
+func (exec *sidecarExecutor) watchContainer(containerId string) {
 	time.Sleep(config.SidecarBackoff)
 
 	exec.watchLooper.Loop(func() error {
@@ -178,16 +178,17 @@ func (exec *sidecarExecutor) watchContainer(container *docker.Container) {
 		// container with our Id.
 		ok := false
 		for _, entry := range containers {
-			if entry.ID == container.ID {
+			if entry.ID == containerId {
 				ok = true
+				break
 			}
 		}
 		if !ok {
-			return errors.New("Container " + container.ID + " not running!")
+			return errors.New("Container " + containerId + " not running!")
 		}
 
 		// Validate health status with Sidecar
-		if err = exec.sidecarStatus(container.ID); err != nil {
+		if err = exec.sidecarStatus(containerId); err != nil {
 			return err
 		}
 
