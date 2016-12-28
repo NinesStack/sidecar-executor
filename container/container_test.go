@@ -2,9 +2,11 @@ package container
 
 import (
 	"bytes"
+	"io/ioutil"
 	"testing"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	. "github.com/smartystreets/goconvey/convey"
@@ -15,8 +17,13 @@ const (
 	ending  = "Thus made their mourning the men of Geatland, for their hero's passing his hearth-companions"
 )
 
+func init() {
+	log.SetOutput(ioutil.Discard)
+}
+
 func Test_PullImage(t *testing.T) {
 	Convey("PullImage()", t, func() {
+
 		image := "foo/foo:foo"
 		taskInfo := &mesos.TaskInfo{
 			Container: &mesos.ContainerInfo{
@@ -117,7 +124,7 @@ func Test_GetLogs(t *testing.T) {
 		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
 		dockerClient := &MockDockerClient{
 			LogOutputString: prelude,
-			LogErrorString: ending,
+			LogErrorString:  ending,
 		}
 
 		stdout := bytes.NewBuffer(make([]byte, 0, 256))
