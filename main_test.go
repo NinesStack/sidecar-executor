@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -166,5 +167,30 @@ func Test_sidecarStatus(t *testing.T) {
 			So(result, ShouldBeNil)
 			So(exec.failCount, ShouldEqual, 0)
 		})
+
+		Convey("healthy when the host doesn't exist in Sidecar", func() {
+			os.Setenv("TASK_HOST", "zaragoza")
+			fetcher.ShouldError = false
+
+			So(exec.sidecarStatus("deadbeef0010"), ShouldBeNil)
+			So(exec.failCount, ShouldEqual, 0)
+		})
+	})
+}
+
+func Test_logConfig(t *testing.T) {
+	// We want to make sure we don't forget to print settings when they get added
+	Convey("Logs all the config settings", t, func() {
+		output := bytes.NewBuffer([]byte{})
+
+		os.Setenv("MESOS_LEGEND", "roncevalles")
+
+		log.SetOutput(output) // Don't show the output
+		logConfig()
+
+		v := reflect.ValueOf(config)
+		for i := 0; i < v.NumField(); i++ {
+		    So(string(output.Bytes()), ShouldContainSubstring, v.Type().Field(i).Name)
+		}
 	})
 }
