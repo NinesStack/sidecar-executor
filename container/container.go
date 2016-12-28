@@ -2,6 +2,7 @@ package container
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -16,6 +17,7 @@ type DockerClient interface {
 	ListImages(docker.ListImagesOptions) ([]docker.APIImages, error)
 	StopContainer(id string, timeout uint) error
 	InspectContainer(id string) (*docker.Container, error)
+	Logs(opts docker.LogsOptions) error
 }
 
 // Loop through all the images and see if we have one with a match
@@ -80,6 +82,25 @@ func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker
 	log.Info("Pulled.")
 
 	return nil
+}
+
+// Fetch the Docker logs from a task and return two Readers that let
+// us fetch the contents.
+func GetLogs(client DockerClient, taskId string, since int64, stdout io.Writer, stderr io.Writer) {
+	go func() {
+		err := client.Logs(docker.LogsOptions{
+			Container:    taskId,
+			OutputStream: stdout,
+			ErrorStream:  stderr,
+			Since:        since,
+			Stdout:       true,
+			Stderr:       true,
+		})
+
+		if err != nil {
+			log.Errorf("Failed to fetch logs for task: %s", err.Error())
+		}
+	}()
 }
 
 // Generate a complete config with both Config and HostConfig. Does not attempt

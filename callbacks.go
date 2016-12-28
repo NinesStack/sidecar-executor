@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -26,6 +27,17 @@ func (exec *sidecarExecutor) Disconnected(driver executor.ExecutorDriver) {
 	log.Info("Executor disconnected.")
 }
 
+// Copy the Docker container logs to stdout and stderr so we can capture some
+// failure information in the Mesos logs. Then tooling can fetch crash info
+// from the Mesos API.
+func (exec *sidecarExecutor) copyLogs(taskId string) {
+	startTimeEpoch := time.Now().UTC().Add(0-config.LogsSince).Unix()
+
+	container.GetLogs(
+		exec.client, taskId, startTimeEpoch, os.Stdout, os.Stderr,
+	)
+}
+
 // monitorTask runs in a goroutine and hangs out, waiting for the watchLooper to
 // complete. When it completes, it handles the Docker and Mesos interactions.
 func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInfo) {
@@ -43,6 +55,9 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		if err != nil {
 			log.Errorf("Error stopping container %s! %s", *taskInfo.TaskId.Value, err.Error())
 		}
+		// Copy the failure logs (hopefully) to stdout/stderr so we can get them
+		exec.copyLogs(*taskInfo.TaskId.Value)
+		// Notify Mesos
 		exec.failTask(taskInfo)
 		return
 	}
@@ -130,6 +145,9 @@ func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *me
 		log.Errorf("Error inspecting container %s! %s", *taskID.Value, err.Error())
 	}
 
+	// Copy the failure logs (hopefully) to stdout/stderr so we can get them
+	exec.copyLogs(*taskID.Value)
+	// Notify Mesos
 	exec.sendStatus(status, taskID)
 
 	// We have to give the driver time to send the message
