@@ -50,8 +50,8 @@ type Config struct {
 
 type sidecarExecutor struct {
 	driver      *executor.MesosExecutorDriver
-	client      *docker.Client
-	httpClient  *http.Client
+	client      container.DockerClient
+	fetcher     SidecarFetcher
 	watchLooper director.Looper
 	dockerAuth  *docker.AuthConfiguration
 	failCount   int
@@ -63,10 +63,14 @@ type SidecarServices struct {
 	}
 }
 
-func newSidecarExecutor(client *docker.Client, auth *docker.AuthConfiguration) *sidecarExecutor {
+type SidecarFetcher interface {
+	Get(url string) (resp *http.Response, err error)
+}
+
+func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfiguration) *sidecarExecutor {
 	return &sidecarExecutor{
 		client:     client,
-		httpClient: &http.Client{Timeout: config.HttpTimeout},
+		fetcher:    &http.Client{Timeout: config.HttpTimeout},
 		dockerAuth: auth,
 	}
 }
@@ -157,7 +161,7 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 // Loop on a timed basis and check the health of the process in Sidecar.
 // Note that because of the way the retries work, the loop timing is a
 // lower bound on the delay.
-func (exec *sidecarExecutor) watchContainer(container *docker.Container) {
+func (exec *sidecarExecutor) watchContainer(containerId string) {
 	time.Sleep(config.SidecarBackoff)
 
 	exec.watchLooper.Loop(func() error {
@@ -174,16 +178,17 @@ func (exec *sidecarExecutor) watchContainer(container *docker.Container) {
 		// container with our Id.
 		ok := false
 		for _, entry := range containers {
-			if entry.ID == container.ID {
+			if entry.ID == containerId {
 				ok = true
+				break
 			}
 		}
 		if !ok {
-			return errors.New("Container " + container.ID + " not running!")
+			return errors.New("Container " + containerId + " not running!")
 		}
 
 		// Validate health status with Sidecar
-		if err = exec.sidecarStatus(container); err != nil {
+		if err = exec.sidecarStatus(containerId); err != nil {
 			return err
 		}
 
@@ -196,6 +201,7 @@ func sidecarLookup(containerId string, services SidecarServices) (*service.Servi
 	hostname := os.Getenv("TASK_HOST") // Mesos supplies this
 	if _, ok := services.Servers[hostname]; !ok {
 		// Don't even have this host!
+		log.Warnf("Host not found in Sidecar! (%s)", hostname)
 		return nil, ok
 	}
 
@@ -210,14 +216,19 @@ func shouldBeKilled(svc *service.Service) bool {
 }
 
 func (exec *sidecarExecutor) exceededFailCount() bool {
-	return exec.failCount < config.SidecarMaxFails
+	return exec.failCount >= config.SidecarMaxFails
 }
 
 // Validate the status of this task with Sidecar
-func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
+func (exec *sidecarExecutor) sidecarStatus(containerId string) error {
 	fetch := func() ([]byte, error) {
-		resp, err := exec.httpClient.Get(config.SidecarUrl)
-		defer resp.Body.Close()
+		resp, err := exec.fetcher.Get(config.SidecarUrl)
+		defer func() {
+			if resp != nil {
+				resp.Body.Close()
+			}
+		}()
+
 		if err != nil {
 			return nil, err
 		}
@@ -233,10 +244,10 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 	// Try to connect to Sidecar, with some retries
 	var err error
 	var data []byte
-	for i := 0; i < config.SidecarRetryCount; i++ {
+	for i := 0; i <= config.SidecarRetryCount; i++ {
 		data, err = fetch()
 		if err != nil {
-			log.Warnf("Failed %d health checks!", i)
+			log.Warnf("Failed %d health checks!", i+1)
 			time.Sleep(config.SidecarRetryDelay)
 			continue
 		}
@@ -259,7 +270,7 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 		return nil
 	}
 
-	svc, ok := sidecarLookup(container.ID, services)
+	svc, ok := sidecarLookup(containerId, services)
 	if !ok {
 		log.Errorf("Can't find this service in Sidecar yet! Assuming healthy...")
 		return nil
@@ -279,8 +290,10 @@ func (exec *sidecarExecutor) sidecarStatus(container *docker.Container) error {
 		log.Errorf("Health failure count exceeded %d", config.SidecarMaxFails)
 
 		exec.failCount = 0
-		return errors.New("Unhealthy container: " + container.ID + " failing task!")
+		return errors.New("Unhealthy container: " + containerId + " failing task!")
 	}
+
+	exec.failCount = 0 // Reset because we were healthy!
 
 	return nil
 }

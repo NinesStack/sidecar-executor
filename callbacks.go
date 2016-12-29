@@ -114,7 +114,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
-	go exec.watchContainer(cntnr)
+	go exec.watchContainer(cntnr.ID)
 	go exec.monitorTask(cntnr.ID[:12], taskInfo)
 }
 
