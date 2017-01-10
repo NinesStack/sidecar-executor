@@ -7,7 +7,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -335,6 +337,23 @@ func getDockerAuthConfig() docker.AuthConfiguration {
 	return auth
 }
 
+func handleSignals(scExec *sidecarExecutor) {
+	sigChan := make(chan os.Signal, 1) // Buffered!
+
+	// Grab some signals we want to catch where possible
+	signal.Notify(sigChan, os.Interrupt)
+	signal.Notify(sigChan, os.Kill)
+	signal.Notify(sigChan, syscall.SIGTERM)
+
+	sig := <-sigChan
+	log.Warnf("Received signal '%s', attempting clean shutdown", sig)
+	if scExec.watchLooper != nil {
+		scExec.watchLooper.Done(errors.New("Got " + sig.String() + " signal!"))
+	}
+	time.Sleep(3*time.Second) // Try to let it quit
+	os.Exit(130) // Ctrl-C received or equivalent
+}
+
 func init() {
 	flag.Parse()
 	err := envconfig.Process("executor", &config)
@@ -367,6 +386,8 @@ func main() {
 
 	// Give the executor a reference to the driver
 	scExec.driver = driver
+
+	go handleSignals(scExec)
 
 	_, err = driver.Start()
 	if err != nil {
