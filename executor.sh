@@ -13,4 +13,4 @@ echo "--> Copying ${SIDECAR_EXECUTOR_PATH} to sandbox ${MESOS_SANDBOX}"
 executor="${MESOS_SANDBOX}/`basename ${SIDECAR_EXECUTOR_PATH}`"
 cp $SIDECAR_EXECUTOR_PATH $executor
 echo "--> Starting ${executor}"
-exec $executor
+exec $executor -logtostderr=true
