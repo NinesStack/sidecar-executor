@@ -51,6 +51,17 @@ variables which the executor will run with, the settings for the executor, and
 the Docker environment that will be supplied to the container. This can be
 critical in understanding how a task failed.
 
+When a task fails or is killed, the executor will fetch the last logs that were
+sent to the container, and copy them to its own stdout and stderr. This means
+that in most cases the Mesos logs will now contain the failure messages and
+there is usually no need to dig further into logging frameworks to find out
+what happened.
+
+Additionally since each instance of the executor manages a single container,
+the process name of the executor that shows up in `ps` output contains both
+the ID of the Docker container and the Docker image name that was used to
+start it.
+
 Running the Executor
 --------------------
 
