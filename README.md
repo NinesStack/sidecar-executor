@@ -105,6 +105,7 @@ the Docker container. Currently the settings available are:
 	SidecarPollInterval: 30s
 	SidecarMaxFails:     3
 	DockerRepository:    https://index.docker.io/v1/
+	LogsSince:           3m
 ```
 
 All of the environment variables are of the form `EXECUTOR_SIDECAR_RETRY_DELAY`
@@ -147,6 +148,11 @@ with `EXECUTOR_`.
    from the Docker config. This will follow the same matching order as
    [described here](https://godoc.org/github.com/fsouza/go-dockerclient#NewAuthConfigurationsFromDockerCfg).
    The executor expects to use only one set of credentials for each job.
+
+ * **LogsSince**: When the container exits or is killed, the executor will copy
+   logs from the Docker container output to its own stdout and stderr so that
+   they show up in the Mesos logs. `LogsSince` is how far back in time we
+   reach to get these logs.
 
 Configuring Docker Connectivity
 -------------------------------
