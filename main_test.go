@@ -194,6 +194,8 @@ func Test_logConfig(t *testing.T) {
 		for i := 0; i < v.NumField(); i++ {
 			So(string(output.Bytes()), ShouldContainSubstring, v.Type().Field(i).Name)
 		}
+
+		So(string(output.Bytes()), ShouldContainSubstring, "roncevalles")
 	})
 }
 
