@@ -31,7 +31,7 @@ func (exec *sidecarExecutor) Disconnected(driver executor.ExecutorDriver) {
 // failure information in the Mesos logs. Then tooling can fetch crash info
 // from the Mesos API.
 func (exec *sidecarExecutor) copyLogs(taskId string) {
-	startTimeEpoch := time.Now().UTC().Add(0-config.LogsSince).Unix()
+	startTimeEpoch := time.Now().UTC().Add(0 - config.LogsSince).Unix()
 
 	container.GetLogs(
 		exec.client, taskId, startTimeEpoch, os.Stdout, os.Stderr,
@@ -108,6 +108,9 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 		exec.failTask(taskInfo)
 		return
 	}
+
+	// For debugging, set process title to contain container ID & image
+	SetProcessName("sidecar-executor " + cntnr.ID[:12] + " (" + *taskInfo.Container.Docker.Image + ")")
 
 	exec.watchLooper =
 		director.NewImmediateTimedLooper(director.FOREVER, config.SidecarPollInterval, make(chan error))

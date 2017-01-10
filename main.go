@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
@@ -337,6 +339,24 @@ func getDockerAuthConfig() docker.AuthConfiguration {
 	return auth
 }
 
+// Set the process name (must be <= current name)
+func SetProcessName(name string) {
+	argv0str := (*reflect.StringHeader)(unsafe.Pointer(&os.Args[0]))
+	argv0 := (*[1 << 30]byte)(unsafe.Pointer(argv0str.Data))[:argv0str.Len]
+
+	// Limit length to existing length
+	if len(name) > len(argv0) {
+		name = name[:len(argv0)]
+	}
+
+	// Space pad over whole pre-existing name
+	if len(name) < len(argv0) {
+		name = name + strings.Repeat(" ", len(argv0) - len(name))
+	}
+
+	copy(argv0, name)
+}
+
 func handleSignals(scExec *sidecarExecutor) {
 	sigChan := make(chan os.Signal, 1) // Buffered!
 
@@ -350,8 +370,8 @@ func handleSignals(scExec *sidecarExecutor) {
 	if scExec.watchLooper != nil {
 		scExec.watchLooper.Done(errors.New("Got " + sig.String() + " signal!"))
 	}
-	time.Sleep(3*time.Second) // Try to let it quit
-	os.Exit(130) // Ctrl-C received or equivalent
+	time.Sleep(3 * time.Second) // Try to let it quit
+	os.Exit(130)                // Ctrl-C received or equivalent
 }
 
 func init() {
