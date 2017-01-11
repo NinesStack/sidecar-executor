@@ -357,6 +357,8 @@ func SetProcessName(name string) {
 	copy(argv0, name)
 }
 
+// Set up some signal handling for kill/term/int and try to shutdown
+// the container and report failure to Mesos.
 func handleSignals(scExec *sidecarExecutor) {
 	sigChan := make(chan os.Signal, 1) // Buffered!
 
@@ -375,7 +377,7 @@ func handleSignals(scExec *sidecarExecutor) {
 }
 
 func init() {
-	flag.Parse()
+	flag.Parse() // Required by mesos-go executor driver
 	err := envconfig.Process("executor", &config)
 	if err != nil {
 		log.Fatal(err.Error())

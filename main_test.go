@@ -13,6 +13,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
+	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/nitro/sidecar-executor/container"
 	"github.com/relistan/go-director"
 	. "github.com/smartystreets/goconvey/convey"
@@ -196,6 +197,43 @@ func Test_logConfig(t *testing.T) {
 		}
 
 		So(string(output.Bytes()), ShouldContainSubstring, "roncevalles")
+	})
+}
+
+func Test_logTaskEnv(t *testing.T) {
+	Convey("Logging Docker task env vars", t, func() {
+		output := bytes.NewBuffer([]byte{})
+		log.SetOutput(output) // Don't show the output
+		key := "env"
+		value := "BOCACCIO=author"
+
+		taskInfo := &mesos.TaskInfo{
+			Container: &mesos.ContainerInfo{
+				Docker: &mesos.ContainerInfo_DockerInfo{
+					Parameters: []*mesos.Parameter{
+						&mesos.Parameter{
+							Key:   &key,
+							Value: &value,
+						},
+					},
+				},
+			},
+		}
+
+		Convey("dumps the vars it finds", func() {
+			logTaskEnv(taskInfo)
+
+			So(string(output.Bytes()), ShouldContainSubstring, "--------")
+			So(string(output.Bytes()), ShouldContainSubstring, "BOCACCIO=author")
+		})
+
+		Convey("reports when there are none", func() {
+			taskInfo.Container.Docker.Parameters = []*mesos.Parameter{}
+
+			logTaskEnv(taskInfo)
+
+			So(string(output.Bytes()), ShouldContainSubstring, "No Docker environment")
+		})
 	})
 }
 
