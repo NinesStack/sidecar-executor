@@ -15,5 +15,7 @@ deploy:
 
   file: sidecar-executor
 
+  skip_cleanup: true
+
   on:
-    repo: Nitro/sidecar-executor
+    tags: true
