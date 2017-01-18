@@ -19,4 +19,4 @@ deploy:
 
   on:
     tags: true
-    condition: "${TRAVIS_GO_VERSION::3}" == "${PRODUCTION_GO_VERSION}"
+    condition: ${TRAVIS_GO_VERSION::3} == ${PRODUCTION_GO_VERSION}
