@@ -7,7 +7,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
-	"github.com/nitro/sidecar-executor/container"
+	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/go-director"
 )
 

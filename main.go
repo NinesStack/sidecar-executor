@@ -19,7 +19,7 @@ import (
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	"github.com/newrelic/sidecar/service"
-	"github.com/nitro/sidecar-executor/container"
+	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/envconfig"
 	"github.com/relistan/go-director"
 )
