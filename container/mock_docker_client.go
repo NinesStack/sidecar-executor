@@ -20,6 +20,7 @@ type MockDockerClient struct {
 	LogOutputString             string
 	LogErrorString              string
 	ListContainersShouldError   bool
+	ListContainersContainers    []docker.APIContainers
 }
 
 func (m *MockDockerClient) PullImage(opts docker.PullImageOptions, auth docker.AuthConfiguration) error {
@@ -84,5 +85,17 @@ func (m *MockDockerClient) ListContainers(opts docker.ListContainersOptions) ([]
 	if m.ListContainersShouldError {
 		return nil, errors.New("Something went wrong! [ListContainers()]")
 	}
-	return []docker.APIContainers{}, nil
+
+	if opts.All {
+		return m.ListContainersContainers, nil
+	}
+
+	// Simulate the non-All option
+	var containers []docker.APIContainers
+	for _, container := range m.ListContainersContainers {
+		if container.State != "exited" {
+			containers = append(containers, container)
+		}
+	}
+	return containers, nil
 }

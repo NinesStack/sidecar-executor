@@ -263,6 +263,20 @@ func Test_watchContainer(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "Container deadbeef0010 not running!")
 		})
+
+		Convey("returns an error when the container exists but has exited", func() {
+			client.ListContainersContainers = []docker.APIContainers{
+				docker.APIContainers{
+					ID: "deadbeef0010",
+					State: "exited",
+				},
+			}
+			exec.watchContainer("deadbeef0010")
+
+			err := <-resultChan
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "Container deadbeef0010 not running!")
+		})
 	})
 }
 
