@@ -95,7 +95,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	containerConfig := container.ConfigForTask(taskInfo)
 	cntnr, err := exec.client.CreateContainer(*containerConfig)
 	if err != nil {
-		log.Error("Failed to create Docker container: %s", err.Error())
+		log.Errorf("Failed to create Docker container: %s", err.Error())
 		exec.failTask(taskInfo)
 		return
 	}
@@ -104,7 +104,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	log.Info("Starting container with ID " + cntnr.ID[:12])
 	err = exec.client.StartContainer(cntnr.ID, containerConfig.HostConfig)
 	if err != nil {
-		log.Error("Failed to create Docker container: %s", err.Error())
+		log.Errorf("Failed to create Docker container: %s", err.Error())
 		exec.failTask(taskInfo)
 		return
 	}
