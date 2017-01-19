@@ -170,9 +170,7 @@ func (exec *sidecarExecutor) watchContainer(containerId string) {
 
 	exec.watchLooper.Loop(func() error {
 		containers, err := exec.client.ListContainers(
-			docker.ListContainersOptions{
-				All: true,
-			},
+			docker.ListContainersOptions{},
 		)
 		if err != nil {
 			return err
