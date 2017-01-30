@@ -125,6 +125,7 @@ func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
 			NetworkMode:  NetworkForTask(taskInfo),
 			CapAdd:       CapAddForTask(taskInfo),
 			CapDrop:      CapDropForTask(taskInfo),
+			LogConfig:    LogOpsForTask(taskInfo),
 		},
 	}
 
@@ -268,6 +269,30 @@ func NetworkForTask(taskInfo *mesos.TaskInfo) string {
 	}
 
 	return networkMode
+}
+
+func LogOpsForTask(taskInfo *mesos.TaskInfo) docker.LogConfig {
+
+	var logDriver string
+	for _, param := range getParams("log-driver", taskInfo) {
+		logDriver = *param.Value
+	}
+
+	logOps := make(map[string]string)
+	for _, param := range getParams("log-opt", taskInfo) {
+		values := strings.SplitN(*param.Value, "=", 2)
+		if len(values) < 2 {
+			log.Debugf("Got label with empty value: %s", *param.Key)
+			continue // No empty labels
+		}
+		logOps[values[0]] = values[1]
+	}
+	log.Debugf("Log config: logDriver: %s, logOps:%s", logDriver, logOps)
+
+	return docker.LogConfig{
+		Type:   logDriver,
+		Config: logOps,
+	}
 }
 
 // Loop through the resource slice and return the named resource
