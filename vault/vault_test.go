@@ -14,7 +14,7 @@ import (
 )
 
 func Test_DecryptEnvs(t *testing.T) {
-	envVault := EnvVaultImpl{client: &mockVaultAPI{}}
+	envVault := EnvVault{client: &mockVaultAPI{}}
 
 	Convey("EnvVault", t, func() {
 		Convey("isVaultPath() returns false for a normal env value", func() {
@@ -38,14 +38,16 @@ func Test_DecryptEnvs(t *testing.T) {
 		})
 
 		Convey("ReadSecretValue fails for an invalid key", func() {
-			_, err := envVault.ReadSecretValue("invalid path")
-			So(err.Error(), ShouldEqual, "Invalid Vault path 'invalid path', expecting prefix 'vault://'")
+			value, err := envVault.ReadSecretValue("invalid path")
+			So(value, ShouldBeEmpty)
+			So(err.Error(), ShouldContainSubstring, "invalid path")
 
 		})
 
 		Convey("ReadSecretValue fails for key not found", func() {
-			_, err := envVault.ReadSecretValue("vault://secure/notFoundKey")
-			So(err.Error(), ShouldEqual, "Path 'secure/notFoundKey' not found [VAULT_ADDR:http://test]")
+			value, err := envVault.ReadSecretValue("vault://secure/notFoundKey")
+			So(value, ShouldBeEmpty)
+			So(err.Error(), ShouldContainSubstring, "Path 'secure/notFoundKey' not found")
 		})
 
 		Convey("ReadSecretValue returns a secured value for a valid key", func() {
@@ -95,7 +97,8 @@ func (m mockVaultAPI) RawRequest(r *api.Request) (*api.Response, error) {
 	if strings.Contains(r.URL.Path, "secure/validKey") {
 		return &api.Response{
 			Response: &http.Response{
-				Body: ioutil.NopCloser(bytes.NewReader([]byte("{ \"data\":{ \"value\": \"secret_value\" }}"))),
+				StatusCode: 200,
+				Body: ioutil.NopCloser(bytes.NewReader([]byte(`{ "data":{ "value": "secret_value" }}`))),
 			},
 		}, nil
 	}
