@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/nitro/sidecar-executor",
 	"GoVersion": "go1.7",
-	"GodepVersion": "v74",
+	"GodepVersion": "v75",
 	"Deps": [
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
@@ -86,6 +86,10 @@
 			"Rev": "ad28ea4487f05916463e2423a55166280e8254b5"
 		},
 		{
+			"ImportPath": "github.com/hashicorp/vault/api",
+			"Comment": "v0.6.5-23-g5f6c4a96",
+			"Rev": "5f6c4a9696c563135793d569c0e6b2aa23691556"
+		},
 			"ImportPath": "github.com/mesos/mesos-go/executor",
 			"Comment": "before-0.26-protos-41-g24208b5",
 			"Rev": "24208b52fe8948652fec1896a5e5cacf3c6d95c8"
