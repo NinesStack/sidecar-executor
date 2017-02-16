@@ -22,6 +22,7 @@ import (
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/envconfig"
 	"github.com/relistan/go-director"
+	"github.com/Nitro/sidecar-executor/vault"
 )
 
 const (
@@ -59,6 +60,7 @@ type sidecarExecutor struct {
 	watchLooper director.Looper
 	dockerAuth  *docker.AuthConfiguration
 	failCount   int
+	vault       vault.EnvVault
 }
 
 type SidecarServices struct {
@@ -76,6 +78,7 @@ func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfigur
 		client:     client,
 		fetcher:    &http.Client{Timeout: config.HttpTimeout},
 		dockerAuth: auth,
+		vault:	    vault.NewDefaultVault(),
 	}
 }
 

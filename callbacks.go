@@ -91,8 +91,19 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 		log.Info("Re-using existing image... already present")
 	}
 
-	// Configure and create the container
+	// Configure the container
 	containerConfig := container.ConfigForTask(taskInfo)
+
+	// Try to decrypt any existing Vault encoded env.
+	decryptedEnv, err := exec.vault.DecryptAllEnv(containerConfig.Config.Env)
+	if err != nil {
+		log.Error(err.Error())
+		exec.failTask(taskInfo)
+		return
+	}
+	containerConfig.Config.Env = decryptedEnv
+
+	// create the container
 	cntnr, err := exec.client.CreateContainer(*containerConfig)
 	if err != nil {
 		log.Errorf("Failed to create Docker container: %s", err.Error())

@@ -38,6 +38,7 @@ provide, pull requests or feature requests are welcome.
  * Network mode setting
  * Capability Add
  * Capability Drop
+ * Resolve environment variables stored in [Vault](https://www.vaultproject.io)
 
 This set of features probably supports most of the production containers out
 there.
