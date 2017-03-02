@@ -110,9 +110,10 @@ func GetLogs(client DockerClient, taskId string, since int64, stdout io.Writer, 
 // to be exhaustive in support for Docker options. Supports the most commonly
 // used options. Others are not complex to add.
 func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
+	name := "mesos-" + *taskInfo.TaskId.Value
 
 	config := &docker.CreateContainerOptions{
-		Name: *taskInfo.TaskId.Value,
+		Name: name,
 		Config: &docker.Config{
 			Env:          EnvForTask(taskInfo),
 			ExposedPorts: PortsForTask(taskInfo),
