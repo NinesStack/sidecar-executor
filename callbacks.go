@@ -30,11 +30,11 @@ func (exec *sidecarExecutor) Disconnected(driver executor.ExecutorDriver) {
 // Copy the Docker container logs to stdout and stderr so we can capture some
 // failure information in the Mesos logs. Then tooling can fetch crash info
 // from the Mesos API.
-func (exec *sidecarExecutor) copyLogs(taskId string) {
+func (exec *sidecarExecutor) copyLogs(containerId string) {
 	startTimeEpoch := time.Now().UTC().Add(0 - config.LogsSince).Unix()
 
 	container.GetLogs(
-		exec.client, taskId, startTimeEpoch, os.Stdout, os.Stderr,
+		exec.client, containerId, startTimeEpoch, os.Stdout, os.Stderr,
 	)
 }
 
@@ -46,17 +46,18 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		*taskInfo.TaskId.Value,
 	)
 
+	containerName := container.GetContainerName(taskInfo.TaskId)
 	// Wait on the watchLooper to return a status
 	err := exec.watchLooper.Wait()
 	if err != nil {
 		log.Errorf("Error! %s", err.Error())
 		// Something went wrong, we better take this thing out!
-		err := container.StopContainer(exec.client, *taskInfo.TaskId.Value, config.KillTaskTimeout)
+		err := container.StopContainer(exec.client, containerName, config.KillTaskTimeout)
 		if err != nil {
-			log.Errorf("Error stopping container %s! %s", *taskInfo.TaskId.Value, err.Error())
+			log.Errorf("Error stopping container %s! %s", containerName, err.Error())
 		}
 		// Copy the failure logs (hopefully) to stdout/stderr so we can get them
-		exec.copyLogs(*taskInfo.TaskId.Value)
+		exec.copyLogs(containerName)
 		// Notify Mesos
 		exec.failTask(taskInfo)
 		return
@@ -138,9 +139,11 @@ func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *me
 	// Stop watching the container so we don't send the wrong task status
 	go func() { exec.watchLooper.Quit() }()
 
-	err := container.StopContainer(exec.client, *taskID.Value, config.KillTaskTimeout)
+	containerName := container.GetContainerName(taskID)
+
+	err := container.StopContainer(exec.client, containerName, config.KillTaskTimeout)
 	if err != nil {
-		log.Errorf("Error stopping container %s! %s", *taskID.Value, err.Error())
+		log.Errorf("Error stopping container %s! %s", containerName, err.Error())
 	}
 
 	// Have to force this to be an int64
@@ -150,17 +153,17 @@ func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *me
 	// This driver callback is used both to shoot a task in the head, and when
 	// a task is being replaced. The Mesos task status needs to reflect the
 	// resulting container State.ExitCode.
-	container, err := exec.client.InspectContainer(*taskID.Value)
+	container, err := exec.client.InspectContainer(containerName)
 	if err == nil {
 		if container.State.ExitCode == 0 {
 			status = TaskFinished // We exited cleanly when asked
 		}
 	} else {
-		log.Errorf("Error inspecting container %s! %s", *taskID.Value, err.Error())
+		log.Errorf("Error inspecting container %s! %s", containerName, err.Error())
 	}
 
 	// Copy the failure logs (hopefully) to stdout/stderr so we can get them
-	exec.copyLogs(*taskID.Value)
+	exec.copyLogs(containerName)
 	// Notify Mesos
 	exec.sendStatus(status, taskID)
 
