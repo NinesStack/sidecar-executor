@@ -121,7 +121,7 @@ func Test_StopContainer(t *testing.T) {
 
 func Test_GetLogs(t *testing.T) {
 	Convey("Fetches the logs from a task", t, func() {
-		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
+		containerId := "mesos-nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
 		dockerClient := &MockDockerClient{
 			LogOutputString: prelude,
 			LogErrorString:  ending,
@@ -130,7 +130,7 @@ func Test_GetLogs(t *testing.T) {
 		stdout := bytes.NewBuffer(make([]byte, 0, 256))
 		stderr := bytes.NewBuffer(make([]byte, 0, 256))
 
-		GetLogs(dockerClient, taskId, time.Now().UTC().Unix(), stdout, stderr)
+		GetLogs(dockerClient, containerId, time.Now().UTC().Unix(), stdout, stderr)
 
 		time.Sleep(1 * time.Millisecond) // Nasty, but lets buffer flush
 
@@ -237,7 +237,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		opts := ConfigForTask(taskInfo)
 
 		Convey("gets the name from the task ID", func() {
-			So(opts.Name, ShouldEqual, taskId)
+			So(opts.Name, ShouldEqual, "mesos-" + taskId)
 		})
 
 		Convey("properly calculates the CPU shares", func() {

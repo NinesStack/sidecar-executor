@@ -89,10 +89,10 @@ func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker
 
 // Fetch the Docker logs from a task and return two Readers that let
 // us fetch the contents.
-func GetLogs(client DockerClient, taskId string, since int64, stdout io.Writer, stderr io.Writer) {
+func GetLogs(client DockerClient, containerId string, since int64, stdout io.Writer, stderr io.Writer) {
 	go func() {
 		err := client.Logs(docker.LogsOptions{
-			Container:    taskId,
+			Container:    containerId,
 			OutputStream: stdout,
 			ErrorStream:  stderr,
 			Since:        since,
@@ -110,9 +110,8 @@ func GetLogs(client DockerClient, taskId string, since int64, stdout io.Writer, 
 // to be exhaustive in support for Docker options. Supports the most commonly
 // used options. Others are not complex to add.
 func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
-
 	config := &docker.CreateContainerOptions{
-		Name: *taskInfo.TaskId.Value,
+		Name: GetContainerName(taskInfo.TaskId),
 		Config: &docker.Config{
 			Env:          EnvForTask(taskInfo),
 			ExposedPorts: PortsForTask(taskInfo),
@@ -279,4 +278,13 @@ func getResource(name string, taskInfo *mesos.TaskInfo) *mesos.Resource {
 	}
 
 	return nil
+}
+
+
+// Prefix used to name Docker containers in order to distinguish those
+// created by Mesos from those created manually.
+const DockerNamePrefix = "mesos-"
+
+func GetContainerName(taskId *mesos.TaskID) string {
+	return DockerNamePrefix + *taskId.Value
 }
