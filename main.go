@@ -99,6 +99,7 @@ func logConfig() {
 	for _, setting := range os.Environ() {
 		if (len(setting) >= 5 && setting[:5] == "MESOS") ||
 			((len(setting) >= 8) && setting[:8] == "EXECUTOR") ||
+			((len(setting) >= 5) && setting[:5] == "VAULT") ||
 			(setting == "HOME") {
 			pair := strings.Split(setting, "=")
 			log.Infof(" * %-25s: %s", pair[0], pair[1])

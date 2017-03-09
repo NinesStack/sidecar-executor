@@ -28,7 +28,11 @@ type VaultAPI interface {
 // setting the `VAULT_ADDR` environment variable.
 func NewDefaultVault() EnvVault {
 	conf := api.DefaultConfig()
-	log.Infof("Vault address '%s'", conf.Address)
+	err := conf.ReadEnvironment()
+	if err != nil {
+		log.Warn("Unable to load Environment vars: %s", err.Error())
+	}
+	log.Infof("Vault address '%s' ", conf.Address)
 	vaultClient, _ := api.NewClient(conf)
 	return EnvVault{client: vaultClient}
 }
