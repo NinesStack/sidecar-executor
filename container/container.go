@@ -56,6 +56,10 @@ func StopContainer(client DockerClient, containerId string, timeout uint) error 
 		return err
 	}
 
+	if cntr.State.Status == "exited" {
+		return nil // Already stopped, nothing to do
+	}
+
 	err = client.StopContainer(containerId, timeout)
 	if err != nil {
 		return err

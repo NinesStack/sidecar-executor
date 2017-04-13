@@ -23,6 +23,7 @@ import (
 	"github.com/relistan/envconfig"
 	"github.com/relistan/go-director"
 	"github.com/Nitro/sidecar-executor/vault"
+	"fmt"
 )
 
 const (
@@ -169,8 +170,11 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 // Loop on a timed basis and check the health of the process in Sidecar.
 // Note that because of the way the retries work, the loop timing is a
 // lower bound on the delay.
-func (exec *sidecarExecutor) watchContainer(containerId string) {
-	time.Sleep(config.SidecarBackoff)
+func (exec *sidecarExecutor) watchContainer(containerId string, checkSidecar bool) {
+	log.Infof("Watching container %s [checkSidecar: %t]", containerId, checkSidecar)
+	if checkSidecar {
+		time.Sleep(config.SidecarBackoff)
+	}
 
 	exec.watchLooper.Loop(func() error {
 		containers, err := exec.client.ListContainers(
@@ -180,7 +184,7 @@ func (exec *sidecarExecutor) watchContainer(containerId string) {
 			return err
 		}
 
-		// Loop through all the containers, looking for a running
+		// Loop through all the running containers, looking for a running
 		// container with our Id.
 		ok := false
 		for _, entry := range containers {
@@ -190,7 +194,24 @@ func (exec *sidecarExecutor) watchContainer(containerId string) {
 			}
 		}
 		if !ok {
-			return errors.New("Container " + containerId + " not running!")
+			// The container is not running, try to fetch the exist reason
+			inspect, err := exec.client.InspectContainer(containerId)
+			if err != nil {
+				return fmt.Errorf("Container %s not found! - %s", containerId, err.Error())
+			}
+
+			msg := fmt.Sprintf("Container %s not running! - Status: %s , ExitCode: %d", containerId, inspect.State.Status, inspect.State.ExitCode)
+			if inspect.State.ExitCode == 0 {
+				log.Infof(msg)
+				exec.watchLooper.Done(nil)
+				return nil
+			} else {
+				return errors.New(msg)
+			}
+		}
+
+		if !checkSidecar {
+			return nil
 		}
 
 		// Validate health status with Sidecar

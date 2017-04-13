@@ -75,6 +75,10 @@ func (m *mockFetcher) failedRequest() (*http.Response, error) {
 						"deadbeef0010": {
 							"ID": "deadbeef0010",
 							"Status": 1
+						},
+						"running00010": {
+							"ID": "running00010",
+							"Status": 1
 						}
 					}
 				}
@@ -247,9 +251,33 @@ func Test_watchContainer(t *testing.T) {
 		resultChan := make(chan error, 5)
 		exec.watchLooper = director.NewFreeLooper(1, resultChan)
 
+		config.SidecarRetryDelay = time.Duration(0) // Sidecar status should fail if ever checked
+		exec.failCount = config.SidecarMaxFails
+		os.Setenv("TASK_HOST", "roncevalles")
+		exec.fetcher = &mockFetcher{
+			ShouldFail: true,
+		}
+
+		client.ListContainersContainers = []docker.APIContainers{
+			{
+				ID: "deadbeef0010",
+				State: "exited",
+			},
+			{
+				ID: "running00010",
+				State: "running",
+			},
+		}
+
+		client.Container = &docker.Container{
+			State: docker.State{
+				Status: "exited",
+			},
+		}
+
 		Convey("returns an error when ListContainers fails", func() {
 			client.ListContainersShouldError = true
-			exec.watchContainer("deadbeef0010")
+			exec.watchContainer("deadbeef0010", true)
 
 			err := <-resultChan
 			So(err, ShouldNotBeNil)
@@ -257,25 +285,47 @@ func Test_watchContainer(t *testing.T) {
 		})
 
 		Convey("returns an error when the container doesn't exist", func() {
-			exec.watchContainer("deadbeef0010")
+			client.Container = nil
+
+			exec.watchContainer("missingbeef0010", true)
+
+			err := <-resultChan
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "Container missingbeef0010 not found!")
+		})
+
+		Convey("returns an error when the container exists but has exited with errors", func() {
+			client.Container.State.ExitCode = 1
+
+			exec.watchContainer("deadbeef0010", true)
 
 			err := <-resultChan
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "Container deadbeef0010 not running!")
 		})
 
-		Convey("returns an error when the container exists but has exited", func() {
-			client.ListContainersContainers = []docker.APIContainers{
-				docker.APIContainers{
-					ID: "deadbeef0010",
-					State: "exited",
-				},
-			}
-			exec.watchContainer("deadbeef0010")
+		Convey("returns without errors when the container exists and has exited without errors", func() {
+			client.Container.State.ExitCode = 0
+
+			exec.watchContainer("deadbeef0010", true)
+
+			err := <-resultChan
+			So(err, ShouldBeNil) // Container stopped without errors
+		})
+
+		Convey("check Sidecar status for a running container with SidecarDiscover: true", func() {
+			exec.watchContainer("running00010", true)
 
 			err := <-resultChan
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "Container deadbeef0010 not running!")
+			So(err.Error(), ShouldContainSubstring, "Unhealthy container: running00010 failing task!")
+		})
+
+		Convey("don't check Sidecar for a running container with SidecarDiscover: false", func() {
+			exec.watchContainer("running00010", false)
+
+			err := <-resultChan
+			So(err, ShouldBeNil) // Container running, Sidecar no checked.
 		})
 	})
 }
