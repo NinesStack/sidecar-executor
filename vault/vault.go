@@ -55,7 +55,7 @@ func (v EnvVault) DecryptAllEnv(envs []string) ([]string, error) {
 				return nil, err
 			}
 			value = decrypted
-			log.Infof("Decrypted Env %s [VAULT_ADDR:%s, path: %s]", v.client.Address(), value)
+			log.Infof("Decrypted Env [VAULT_ADDR:%s, path: %s]", v.client.Address(), key)
 		}
 		decryptedEnv = append(decryptedEnv, fmt.Sprintf("%s=%s", key, value))
 	}
@@ -78,7 +78,6 @@ func (v EnvVault) ReadSecretValue(vaultPath string) (string, error) {
 		return "", errors.Errorf("Path '%s' not found [VAULT_ADDR:%s]", path, v.client.Address())
 	}
 
-	log.Debugf("Vault secret for path='%s', value: %s", path, secret.Data)
 	value, ok := secret.Data["value"].(string)
 
 	if !ok {
