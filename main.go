@@ -205,9 +205,9 @@ func (exec *sidecarExecutor) watchContainer(containerId string, checkSidecar boo
 				log.Infof(msg)
 				exec.watchLooper.Done(nil)
 				return nil
-			} else {
-				return errors.New(msg)
 			}
+
+			return errors.New(msg)
 		}
 
 		if !checkSidecar {

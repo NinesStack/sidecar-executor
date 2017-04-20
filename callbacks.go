@@ -2,15 +2,15 @@ package main
 
 import (
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/Nitro/sidecar-executor/container"
 	log "github.com/Sirupsen/logrus"
+	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
-	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/go-director"
-	"github.com/fsouza/go-dockerclient"
-	"strconv"
 )
 
 // Callbacks from the Mesos driver. These are required to implement
