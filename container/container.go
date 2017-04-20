@@ -292,3 +292,11 @@ const DockerNamePrefix = "mesos-"
 func GetContainerName(taskId *mesos.TaskID) string {
 	return DockerNamePrefix + *taskId.Value
 }
+
+func GetExitCode(client DockerClient, containerId string) (int, error) {
+	inspect, err := client.InspectContainer(containerId)
+	if err != nil {
+		return 0, fmt.Errorf("Container %s not found! - %s", containerId, err.Error())
+	}
+	return inspect.State.ExitCode, nil
+}

@@ -194,14 +194,14 @@ func (exec *sidecarExecutor) watchContainer(containerId string, checkSidecar boo
 			}
 		}
 		if !ok {
-			// The container is not running, try to fetch the exist reason
-			inspect, err := exec.client.InspectContainer(containerId)
+			exitCode, err := container.GetExitCode(exec.client, containerId)
+
 			if err != nil {
-				return fmt.Errorf("Container %s not found! - %s", containerId, err.Error())
+				return err
 			}
 
-			msg := fmt.Sprintf("Container %s not running! - Status: %s , ExitCode: %d", containerId, inspect.State.Status, inspect.State.ExitCode)
-			if inspect.State.ExitCode == 0 {
+			msg := fmt.Sprintf("Container %s not running! - ExitCode: %d", containerId, exitCode)
+			if exitCode == 0 {
 				log.Infof(msg)
 				exec.watchLooper.Done(nil)
 				return nil

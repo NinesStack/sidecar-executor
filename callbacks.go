@@ -188,11 +188,11 @@ func (exec *sidecarExecutor) Error(driver executor.ExecutorDriver, err string) {
 
 // Check if it should check Sidecar status, assuming enabled by default
 func shouldCheckSidecar(containerConfig *docker.CreateContainerOptions) bool {
-	if _, ok:= containerConfig.Config.Labels["SidecarDiscover"]; !ok {
+	value, ok:= containerConfig.Config.Labels["SidecarDiscover"]
+	if !ok {
 		return true
 	}
 
-	value, _ := containerConfig.Config.Labels["SidecarDiscover"]
 	if enabled, err:= strconv.ParseBool(value); err == nil {
 		return enabled
 	}
