@@ -164,6 +164,11 @@ func Test_ConfigGeneration(t *testing.T) {
 		capDrop := "cap-drop"
 		capDropValue := "NET_ADMIN"
 
+		logDriver := "log-driver"
+		logDriverValue := "json-file"
+		logOpt := "log-opt"
+		logOptValue := "labels=EnvironmentName,environment_name,ServiceName"
+
 		host := mesos.ContainerInfo_DockerInfo_HOST
 
 		port := uint32(8080)
@@ -198,6 +203,14 @@ func Test_ConfigGeneration(t *testing.T) {
 						{
 							Key:   &capDrop,
 							Value: &capDropValue,
+						},
+						{
+							Key:   &logDriver,
+							Value: &logDriverValue,
+						},
+						{
+							Key:   &logOpt,
+							Value: &logOptValue,
 						},
 					},
 					PortMappings: []*mesos.ContainerInfo_DockerInfo_PortMapping{
@@ -297,6 +310,12 @@ func Test_ConfigGeneration(t *testing.T) {
 			taskInfo.Container.Docker.Network = &none
 			opts := ConfigForTask(taskInfo)
 			So(opts.HostConfig.NetworkMode, ShouldEqual, "none")
+		})
+
+		Convey("handles log-driver config", func() {
+			So(len(opts.HostConfig.LogConfig.Config), ShouldEqual, 1)
+			So(opts.HostConfig.LogConfig.Type, ShouldEqual, "json-file")
+			So(opts.HostConfig.LogConfig.Config["labels"], ShouldEqual, "EnvironmentName,environment_name,ServiceName")
 		})
 	})
 }
