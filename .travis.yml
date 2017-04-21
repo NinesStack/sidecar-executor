@@ -1,9 +1,7 @@
 language: go
 
 go:
-  - 1.7.x
   - 1.8.x
-  - master
 
 script:
   - go test -v ./... && (CGO_ENABLED=0 GOOS=linux go build -ldflags '-d')

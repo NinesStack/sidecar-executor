@@ -2,12 +2,14 @@ package main
 
 import (
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/Nitro/sidecar-executor/container"
 	log "github.com/Sirupsen/logrus"
+	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
-	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/go-director"
 )
 
@@ -41,9 +43,9 @@ func (exec *sidecarExecutor) copyLogs(containerId string) {
 // monitorTask runs in a goroutine and hangs out, waiting for the watchLooper to
 // complete. When it completes, it handles the Docker and Mesos interactions.
 func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInfo) {
-	log.Infof("Monitoring container %s for Mesos task %s",
-		cntnrId,
+	log.Infof("Monitoring Mesos task %s for container %s",
 		*taskInfo.TaskId.Value,
+		cntnrId,
 	)
 
 	containerName := container.GetContainerName(taskInfo.TaskId)
@@ -63,8 +65,8 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		return
 	}
 
-	exec.finishTask(taskInfo)
 	log.Info("Task completed: ", taskInfo.GetName())
+	exec.finishTask(taskInfo)
 	return
 }
 
@@ -129,7 +131,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
-	go exec.watchContainer(cntnr.ID)
+	go exec.watchContainer(cntnr.ID, shouldCheckSidecar(containerConfig))
 	go exec.monitorTask(cntnr.ID[:12], taskInfo)
 }
 
@@ -182,4 +184,18 @@ func (exec *sidecarExecutor) Shutdown(driver executor.ExecutorDriver) {
 
 func (exec *sidecarExecutor) Error(driver executor.ExecutorDriver, err string) {
 	log.Info("Got error message:", err)
+}
+
+// Check if it should check Sidecar status, assuming enabled by default
+func shouldCheckSidecar(containerConfig *docker.CreateContainerOptions) bool {
+	value, ok:= containerConfig.Config.Labels["SidecarDiscover"]
+	if !ok {
+		return true
+	}
+
+	if enabled, err:= strconv.ParseBool(value); err == nil {
+		return enabled
+	}
+
+	return true
 }
