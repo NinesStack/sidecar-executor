@@ -46,18 +46,19 @@ func (v EnvVault) DecryptAllEnv(envs []string) ([]string, error) {
 	var decryptedEnv []string
 	for _, env := range envs {
 		keyValue := strings.SplitN(env, "=", 2)
-		key := keyValue[0]
-		value := keyValue[1]
-		if isVaultPath(value) {
-			log.Debugf("Fetching secret value for path: '%s' [VAULT_ADDR: %s]", value, v.client.Address())
-			decrypted, err := v.ReadSecretValue(value)
+		envName := keyValue[0]
+		envValue := keyValue[1]
+
+		if isVaultPath(envValue) {
+			log.Debugf("Fetching secret value for path: '%s' [VAULT_ADDR: %s]", envValue, v.client.Address())
+			decrypted, err := v.ReadSecretValue(envValue)
 			if err != nil {
 				return nil, err
 			}
-			value = decrypted
-			log.Infof("Decrypted Env [VAULT_ADDR:%s, path: %s]", v.client.Address(), key)
+			log.Infof("Decrypted '%s' [VAULT_ADDR: %s, path: %s ]", envName, v.client.Address(), envValue)
+			envValue = decrypted
 		}
-		decryptedEnv = append(decryptedEnv, fmt.Sprintf("%s=%s", key, value))
+		decryptedEnv = append(decryptedEnv, fmt.Sprintf("%s=%s", envName, envValue))
 	}
 	return decryptedEnv, nil
 }
