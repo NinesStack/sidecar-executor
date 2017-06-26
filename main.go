@@ -52,6 +52,8 @@ type Config struct {
 	SidecarMaxFails     int           `split_words:"true" default:"3"`
 	DockerRepository    string        `split_words:"true" default:"https://index.docker.io/v1/"`
 	LogsSince           time.Duration `split_words:"true" default:"3m"`
+	ForceCpuLimit       bool          `split_words:"true" default:false`
+	ForceMemoryLimit    bool          `split_words:"true" default:false`
 }
 
 type sidecarExecutor struct {
@@ -62,6 +64,7 @@ type sidecarExecutor struct {
 	dockerAuth  *docker.AuthConfiguration
 	failCount   int
 	vault       vault.EnvVault
+	config      Config
 }
 
 type SidecarServices struct {
@@ -79,7 +82,8 @@ func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfigur
 		client:     client,
 		fetcher:    &http.Client{Timeout: config.HttpTimeout},
 		dockerAuth: auth,
-		vault:	    vault.NewDefaultVault(),
+		vault:      vault.NewDefaultVault(),
+		config:     config,
 	}
 }
 
@@ -95,6 +99,8 @@ func logConfig() {
 	log.Infof(" * SidecarMaxFails:     %d", config.SidecarMaxFails)
 	log.Infof(" * DockerRepository:    %s", config.DockerRepository)
 	log.Infof(" * LogsSince:           %s", config.LogsSince.String())
+	log.Infof(" * ForceCpuLimit:       %t", config.ForceCpuLimit)
+	log.Infof(" * ForceMemoryLimit:    %t", config.ForceMemoryLimit)
 
 	log.Infof("Environment ---------------------------")
 	for _, setting := range os.Environ() {
@@ -103,7 +109,7 @@ func logConfig() {
 			((len(setting) >= 5) && setting[:5] == "VAULT") ||
 			(setting == "HOME") {
 			pair := strings.Split(setting, "=")
-			log.Infof(" * %-25s: %s", pair[0], pair[1])
+			log.Infof(" * %-30s: %s", pair[0], pair[1])
 		}
 	}
 	log.Infof("---------------------------------------")

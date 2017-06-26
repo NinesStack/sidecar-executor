@@ -152,7 +152,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		image := "foo/foo:foo"
 		cpus := "cpus"
 		cpusValue := float64(0.5)
-		memory := "memoryMb"
+		memory := "mem"
 		memoryValue := float64(128)
 
 		env := "env"
@@ -234,18 +234,24 @@ func Test_ConfigGeneration(t *testing.T) {
 			},
 		}
 
-		opts := ConfigForTask(taskInfo)
+		opts := ConfigForTask(taskInfo, false, false)
+		optsForced := ConfigForTask(taskInfo, true, true)
 
 		Convey("gets the name from the task ID", func() {
 			So(opts.Name, ShouldEqual, "mesos-" + taskId)
 		})
 
-		Convey("properly calculates the CPU shares", func() {
-			So(opts.Config.CPUShares, ShouldEqual, float64(512))
+		Convey("properly calculates the CPU limit", func() {
+			So(optsForced.HostConfig.CPUPeriod, ShouldEqual, float64(50000))
+			So(optsForced.HostConfig.CPUQuota, ShouldEqual, float64(25000))
+
+			So(opts.HostConfig.CPUPeriod, ShouldEqual, float64(0))
+			So(opts.HostConfig.CPUQuota, ShouldEqual, float64(0))
 		})
 
 		Convey("properly calculates the memory limit", func() {
-			So(opts.Config.Memory, ShouldEqual, float64(128*1024*1024))
+			So(optsForced.HostConfig.Memory, ShouldEqual, float64(128*1024*1024))
+			So(opts.HostConfig.Memory, ShouldEqual, float64(0))
 		})
 
 		Convey("populates the environment", func() {
@@ -295,7 +301,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		Convey("defaults to correct network mode", func() {
 			none := mesos.ContainerInfo_DockerInfo_NONE
 			taskInfo.Container.Docker.Network = &none
-			opts := ConfigForTask(taskInfo)
+			opts := ConfigForTask(taskInfo, false, false)
 			So(opts.HostConfig.NetworkMode, ShouldEqual, "none")
 		})
 	})

@@ -110,10 +110,14 @@ func GetLogs(client DockerClient, containerId string, since int64, stdout io.Wri
 	}()
 }
 
+// Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
+// See: https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
+const defaultCpuPeriod = 50000 // 50ms microseconds
+
 // Generate a complete config with both Config and HostConfig. Does not attempt
 // to be exhaustive in support for Docker options. Supports the most commonly
 // used options. Others are not complex to add.
-func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
+func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimit bool) *docker.CreateContainerOptions {
 	config := &docker.CreateContainerOptions{
 		Name: GetContainerName(taskInfo.TaskId),
 		Config: &docker.Config{
@@ -133,14 +137,18 @@ func ConfigForTask(taskInfo *mesos.TaskInfo) *docker.CreateContainerOptions {
 
 	// Check for and calculate CPU shares
 	cpus := getResource("cpus", taskInfo)
-	if cpus != nil {
-		config.Config.CPUShares = int64(*cpus.Scalar.Value * float64(1024))
+	if cpus != nil && forceCpuLimit {
+		config.HostConfig.CPUPeriod = defaultCpuPeriod
+		config.HostConfig.CPUQuota = int64(*cpus.Scalar.Value * float64(defaultCpuPeriod))
+		log.Infof("CPU limit set [HostConfig.CPUQuota=%d, HostConfig.CPUPeriod=%d]  ", config.HostConfig.CPUQuota, defaultCpuPeriod)
 	}
 
 	// Check for and calculate memory limit
-	memory := getResource("memoryMb", taskInfo)
-	if memory != nil {
-		config.Config.Memory = int64(*memory.Scalar.Value * float64(1024*1024))
+	memory := getResource("mem", taskInfo)
+	if memory != nil && forceMemoryLimit {
+		memoryLimit := int64(*memory.Scalar.Value * float64(1024 * 1024))
+		log.Infof("Memory limit set to %.0fMB [HostConfig.Memory=%d] ", * memory.Scalar.Value, memoryLimit)
+		config.HostConfig.Memory = int64(memoryLimit)
 	}
 
 	return config
