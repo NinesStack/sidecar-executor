@@ -11,6 +11,10 @@ import (
 	mesos "github.com/mesos/mesos-go/mesosproto"
 )
 
+// Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
+// See: https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
+const defaultCpuPeriod = 50000 // 50ms microseconds
+
 // Our own narrowly-scoped interface for Docker client
 type DockerClient interface {
 	CreateContainer(opts docker.CreateContainerOptions) (*docker.Container, error)
@@ -109,10 +113,6 @@ func GetLogs(client DockerClient, containerId string, since int64, stdout io.Wri
 		}
 	}()
 }
-
-// Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
-// See: https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
-const defaultCpuPeriod = 50000 // 50ms microseconds
 
 // Generate a complete config with both Config and HostConfig. Does not attempt
 // to be exhaustive in support for Docker options. Supports the most commonly
