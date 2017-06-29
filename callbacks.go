@@ -95,7 +95,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	}
 
 	// Configure the container
-	containerConfig := container.ConfigForTask(taskInfo)
+	containerConfig := container.ConfigForTask(taskInfo, exec.config.ForceCpuLimit, exec.config.ForceMemoryLimit)
 
 	// Try to decrypt any existing Vault encoded env.
 	decryptedEnv, err := exec.vault.DecryptAllEnv(containerConfig.Config.Env)
@@ -116,7 +116,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// Start the container
 	log.Info("Starting container with ID " + cntnr.ID[:12])
-	err = exec.client.StartContainer(cntnr.ID, containerConfig.HostConfig)
+	err = exec.client.StartContainer(cntnr.ID, nil)
 	if err != nil {
 		log.Errorf("Failed to create Docker container: %s", err.Error())
 		exec.failTask(taskInfo)
