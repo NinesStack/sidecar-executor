@@ -191,6 +191,25 @@ func EnvForTask(taskInfo *mesos.TaskInfo) []string {
 		envVars = append(envVars, *param.Value)
 	}
 
+	// Expose port mappings to the container via env vars. This
+	// lets the container know its externally-facing ports for
+	// purposes of reporting to other services, etc.
+	for _, port := range taskInfo.Container.Docker.PortMappings {
+		if port.ContainerPort == nil || port.HostPort == nil {
+			continue
+		}
+
+		envVars = append(
+			envVars,
+			fmt.Sprintf("MESOS_PORT_%d=%d", *port.ContainerPort, *port.HostPort),
+		)
+	}
+
+	// We must also expose the external hostname into the container
+	// so that tasks can know their public hostname. Otherwise they
+	// only know about their container ID as the hostname per Docker.
+	envVars = append(envVars, "MESOS_HOSTNAME=" + *taskInfo.Container.Hostname)
+
 	return envVars
 }
 
