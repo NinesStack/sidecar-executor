@@ -152,6 +152,10 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 		config.HostConfig.Memory = int64(memoryLimit)
 	}
 
+	// We waste some CPU here when debugging is off...
+	jsonTaskInfo, _ := json.Marshal(*taskInfo)
+	log.Debugf("Mesos TaskInfo: %s", jsonTaskInfo)
+
 	jsonConfig, _ := json.Marshal(config)
 	log.Debugf("Final config: %s", jsonConfig)
 
