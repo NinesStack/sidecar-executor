@@ -205,6 +205,11 @@ func EnvForTask(taskInfo *mesos.TaskInfo) []string {
 		)
 	}
 
+	// We must also expose the external hostname into the container
+	// so that tasks can know their public hostname. Otherwise they
+	// only know about their container ID as the hostname per Docker.
+	envVars = append(envVars, "MESOS_HOSTNAME=" + *taskInfo.Container.Hostname)
+
 	return envVars
 }
 

@@ -176,6 +176,8 @@ func Test_ConfigGeneration(t *testing.T) {
 		v2_hp := "/tmp/bar"
 		mode := mesos.Volume_RO
 
+		hostname := "beowulf.example.com"
+
 		taskInfo := &mesos.TaskInfo{
 			TaskId: &mesos.TaskID{Value: &taskId},
 			Container: &mesos.ContainerInfo{
@@ -221,6 +223,7 @@ func Test_ConfigGeneration(t *testing.T) {
 						HostPath:      &v2_hp,
 					},
 				},
+				Hostname: &hostname,
 			},
 			Resources: []*mesos.Resource{
 				{
@@ -260,7 +263,11 @@ func Test_ConfigGeneration(t *testing.T) {
 		})
 
 		Convey("maps ports into the environment", func() {
-			So(opts.Config.Env[len(opts.Config.Env)-1], ShouldEqual, "MESOS_PORT_=")
+			So(opts.Config.Env[len(opts.Config.Env)-2], ShouldEqual, "MESOS_PORT_443=10270")
+		})
+
+		Convey("maps the hostname into the environment", func() {
+			So(opts.Config.Env[len(opts.Config.Env)-1], ShouldEqual, "MESOS_HOSTNAME=" + hostname)
 		})
 
 		Convey("fills in the exposed ports", func() {
