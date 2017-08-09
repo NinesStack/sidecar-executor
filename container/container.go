@@ -1,6 +1,7 @@
 package container
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -146,10 +147,13 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 	// Check for and calculate memory limit
 	memory := getResource("mem", taskInfo)
 	if memory != nil && forceMemoryLimit {
-		memoryLimit := int64(*memory.Scalar.Value * float64(1024 * 1024))
-		log.Infof("Memory limit set to %.0fMB [HostConfig.Memory=%d] ", * memory.Scalar.Value, memoryLimit)
+		memoryLimit := int64(*memory.Scalar.Value * float64(1024*1024))
+		log.Infof("Memory limit set to %.0fMB [HostConfig.Memory=%d] ", *memory.Scalar.Value, memoryLimit)
 		config.HostConfig.Memory = int64(memoryLimit)
 	}
+
+	jsonConfig, _ := json.Marshal(config)
+	log.Debugf("Final config: %s", jsonConfig)
 
 	return config
 }
@@ -209,7 +213,7 @@ func EnvForTask(taskInfo *mesos.TaskInfo) []string {
 	// so that tasks can know their public hostname. Otherwise they
 	// only know about their container ID as the hostname per Docker.
 	if taskInfo.Container.Hostname != nil {
-		envVars = append(envVars, "MESOS_HOSTNAME=" + *taskInfo.Container.Hostname)
+		envVars = append(envVars, "MESOS_HOSTNAME="+*taskInfo.Container.Hostname)
 	}
 
 	return envVars
@@ -312,7 +316,6 @@ func getResource(name string, taskInfo *mesos.TaskInfo) *mesos.Resource {
 
 	return nil
 }
-
 
 // Prefix used to name Docker containers in order to distinguish those
 // created by Mesos from those created manually.

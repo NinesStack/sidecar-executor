@@ -18,7 +18,7 @@ import (
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
-	"github.com/newrelic/sidecar/service"
+	"github.com/Nitro/sidecar/service"
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/envconfig"
 	"github.com/relistan/go-director"
@@ -54,6 +54,7 @@ type Config struct {
 	LogsSince           time.Duration `split_words:"true" default:"3m"`
 	ForceCpuLimit       bool          `split_words:"true" default:false`
 	ForceMemoryLimit    bool          `split_words:"true" default:false`
+	Debug               bool          `split_words:"true" default:false`
 }
 
 type sidecarExecutor struct {
@@ -101,6 +102,7 @@ func logConfig() {
 	log.Infof(" * LogsSince:           %s", config.LogsSince.String())
 	log.Infof(" * ForceCpuLimit:       %t", config.ForceCpuLimit)
 	log.Infof(" * ForceMemoryLimit:    %t", config.ForceMemoryLimit)
+	log.Infof(" * Debug:               %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")
 	for _, setting := range os.Environ() {
@@ -413,7 +415,11 @@ func init() {
 	}
 
 	log.SetOutput(os.Stdout)
-	log.SetLevel(log.InfoLevel)
+	if config.Debug {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 }
 
 func main() {
