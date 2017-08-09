@@ -255,8 +255,12 @@ func Test_ConfigGeneration(t *testing.T) {
 		})
 
 		Convey("populates the environment", func() {
-			So(len(opts.Config.Env), ShouldEqual, 1)
+			So(len(opts.Config.Env), ShouldBeGreaterThan, 1)
 			So(opts.Config.Env[0], ShouldEqual, "SOMETHING=123=123")
+		})
+
+		Convey("maps ports into the environment", func() {
+			So(opts.Config.Env[len(opts.Config.Env)-1], ShouldEqual, "MESOS_PORT_=")
 		})
 
 		Convey("fills in the exposed ports", func() {
