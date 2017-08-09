@@ -177,6 +177,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		mode := mesos.Volume_RO
 
 		hostname := "beowulf.example.com"
+		hostKey  := "TASK_HOST"
 
 		taskInfo := &mesos.TaskInfo{
 			TaskId: &mesos.TaskID{Value: &taskId},
@@ -223,7 +224,6 @@ func Test_ConfigGeneration(t *testing.T) {
 						HostPath:      &v2_hp,
 					},
 				},
-				Hostname: &hostname,
 			},
 			Resources: []*mesos.Resource{
 				{
@@ -233,6 +233,18 @@ func Test_ConfigGeneration(t *testing.T) {
 				{
 					Name:   &memory,
 					Scalar: &mesos.Value_Scalar{Value: &memoryValue},
+				},
+			},
+			Executor: &mesos.ExecutorInfo{
+				Command: &mesos.CommandInfo{
+					Environment: &mesos.Environment{
+						Variables: []*mesos.Environment_Variable{
+							{
+								Name: &hostKey,
+								Value: &hostname,
+							},
+						},
+					},
 				},
 			},
 		}

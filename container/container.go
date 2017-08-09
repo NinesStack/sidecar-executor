@@ -191,6 +191,24 @@ func getParams(key string, taskInfo *mesos.TaskInfo) (params []*mesos.Parameter)
 	return params
 }
 
+// getHostname finds the hostname for the host from the TaskInfo
+func getHostname(taskInfo *mesos.TaskInfo) string {
+	if taskInfo.Executor == nil || taskInfo.Executor.Command == nil ||
+		taskInfo.Executor.Command.Environment == nil ||
+		taskInfo.Executor.Command.Environment.Variables == nil {
+
+		return ""
+	}
+
+	for _, envVar := range taskInfo.Executor.Command.Environment.Variables {
+		if *envVar.Name == "TASK_HOST" {
+			return *envVar.Value
+		}
+	}
+
+	return ""
+}
+
 // Map Mesos environment settings to Docker environment (-e FOO=BAR)
 func EnvForTask(taskInfo *mesos.TaskInfo) []string {
 	var envVars []string
@@ -216,8 +234,9 @@ func EnvForTask(taskInfo *mesos.TaskInfo) []string {
 	// We must also expose the external hostname into the container
 	// so that tasks can know their public hostname. Otherwise they
 	// only know about their container ID as the hostname per Docker.
-	if taskInfo.Container.Hostname != nil {
-		envVars = append(envVars, "MESOS_HOSTNAME="+*taskInfo.Container.Hostname)
+	hostname := getHostname(taskInfo)
+	if len(hostname) > 0 {
+		envVars = append(envVars, "MESOS_HOSTNAME="+getHostname(taskInfo))
 	}
 
 	return envVars
