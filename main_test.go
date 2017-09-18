@@ -226,18 +226,19 @@ func Test_logTaskEnv(t *testing.T) {
 		}
 
 		Convey("dumps the vars it finds", func() {
-			logTaskEnv(taskInfo)
+			logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
 
 			So(string(output.Bytes()), ShouldContainSubstring, "--------")
 			So(string(output.Bytes()), ShouldContainSubstring, "BOCACCIO=author")
 		})
 
-		Convey("reports when there are none", func() {
+		Convey("always has environment and service name", func() {
 			taskInfo.Container.Docker.Parameters = []*mesos.Parameter{}
 
-			logTaskEnv(taskInfo)
+			logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
 
-			So(string(output.Bytes()), ShouldContainSubstring, "No Docker environment")
+			So(string(output.Bytes()), ShouldContainSubstring, "SERVICE_NAME=undefined-servicename")
+			So(string(output.Bytes()), ShouldContainSubstring, "ENVIRONMENT_NAME=")
 		})
 	})
 }

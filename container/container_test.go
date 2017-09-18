@@ -164,6 +164,11 @@ func Test_ConfigGeneration(t *testing.T) {
 		capDrop := "cap-drop"
 		capDropValue := "NET_ADMIN"
 
+		svcName := "dev-test-app"
+		svcNameLabel := "ServiceName="+svcName
+		envName := "dev"
+		envNameLabel := "EnvironmentName="+envName
+
 		host := mesos.ContainerInfo_DockerInfo_HOST
 
 		port := uint32(8080)
@@ -177,7 +182,8 @@ func Test_ConfigGeneration(t *testing.T) {
 		mode := mesos.Volume_RO
 
 		hostname := "beowulf.example.com"
-		hostKey  := "TASK_HOST"
+		hostKey := "TASK_HOST"
+
 
 		taskInfo := &mesos.TaskInfo{
 			TaskId: &mesos.TaskID{Value: &taskId},
@@ -193,6 +199,14 @@ func Test_ConfigGeneration(t *testing.T) {
 						{
 							Key:   &label,
 							Value: &labelValue,
+						},
+						{
+							Key:   &label,
+							Value: &svcNameLabel,
+						},
+						{
+							Key:   &label,
+							Value: &envNameLabel,
 						},
 						{
 							Key:   &capAdd,
@@ -240,7 +254,7 @@ func Test_ConfigGeneration(t *testing.T) {
 					Environment: &mesos.Environment{
 						Variables: []*mesos.Environment_Variable{
 							{
-								Name: &hostKey,
+								Name:  &hostKey,
 								Value: &hostname,
 							},
 						},
@@ -253,7 +267,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		optsForced := ConfigForTask(taskInfo, true, true)
 
 		Convey("gets the name from the task ID", func() {
-			So(opts.Name, ShouldEqual, "mesos-" + taskId)
+			So(opts.Name, ShouldEqual, "mesos-"+taskId)
 		})
 
 		Convey("properly calculates the CPU limit", func() {
@@ -275,11 +289,20 @@ func Test_ConfigGeneration(t *testing.T) {
 		})
 
 		Convey("maps ports into the environment", func() {
-			So(opts.Config.Env[len(opts.Config.Env)-2], ShouldEqual, "MESOS_PORT_443=10270")
+			// We index backward to find the vars we just set
+			So(opts.Config.Env[len(opts.Config.Env)-4], ShouldEqual, "MESOS_PORT_443=10270")
 		})
 
 		Convey("maps the hostname into the environment", func() {
-			So(opts.Config.Env[len(opts.Config.Env)-1], ShouldEqual, "MESOS_HOSTNAME=" + hostname)
+			So(opts.Config.Env[len(opts.Config.Env)-3], ShouldEqual, "MESOS_HOSTNAME="+hostname)
+		})
+
+		Convey("maps the ServiceName into the environment", func() {
+			So(opts.Config.Env[len(opts.Config.Env)-2], ShouldEqual, "SERVICE_NAME="+svcName)
+		})
+
+		Convey("maps the EnvironmentName into the environment", func() {
+			So(opts.Config.Env[len(opts.Config.Env)-1], ShouldEqual, "ENVIRONMENT_NAME="+envName)
 		})
 
 		Convey("fills in the exposed ports", func() {
@@ -292,7 +315,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		})
 
 		Convey("gets the labels", func() {
-			So(len(opts.Config.Labels), ShouldEqual, 1)
+			So(len(opts.Config.Labels), ShouldBeGreaterThanOrEqualTo, 1)
 			So(opts.Config.Labels["ANYTHING"], ShouldEqual, "123=123")
 		})
 

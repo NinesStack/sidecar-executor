@@ -14,7 +14,7 @@ import (
 
 // Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
 // See: https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
-const defaultCpuPeriod = 50000 // 50ms microseconds
+const defaultCpuPeriod = 50000 // 50ms
 
 // Our own narrowly-scoped interface for Docker client
 type DockerClient interface {
@@ -119,13 +119,15 @@ func GetLogs(client DockerClient, containerId string, since int64, stdout io.Wri
 // to be exhaustive in support for Docker options. Supports the most commonly
 // used options. Others are not complex to add.
 func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimit bool) *docker.CreateContainerOptions {
+	labels := LabelsForTask(taskInfo)
+
 	config := &docker.CreateContainerOptions{
 		Name: GetContainerName(taskInfo.TaskId),
 		Config: &docker.Config{
-			Env:          EnvForTask(taskInfo),
+			Env:          EnvForTask(taskInfo, labels),
 			ExposedPorts: PortsForTask(taskInfo),
 			Image:        *taskInfo.Container.Docker.Image,
-			Labels:       LabelsForTask(taskInfo),
+			Labels:       labels,
 		},
 		HostConfig: &docker.HostConfig{
 			Binds:        BindsForTask(taskInfo),
@@ -210,7 +212,7 @@ func getHostname(taskInfo *mesos.TaskInfo) string {
 }
 
 // Map Mesos environment settings to Docker environment (-e FOO=BAR)
-func EnvForTask(taskInfo *mesos.TaskInfo) []string {
+func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string) []string {
 	var envVars []string
 
 	for _, param := range getParams("env", taskInfo) {
@@ -238,6 +240,30 @@ func EnvForTask(taskInfo *mesos.TaskInfo) []string {
 	if len(hostname) > 0 {
 		envVars = append(envVars, "MESOS_HOSTNAME="+getHostname(taskInfo))
 	}
+
+	// We expose the value in the ServiceName and EnvironmentName
+	// labels as an env vars to the container as well.
+	if labels == nil {
+		log.Warn("No ServiceName or EnvironmentName set in Docker labels!")
+		return envVars
+	}
+
+	svcName, svcOk := labels["ServiceName"]
+	envName, envOk := labels["EnvironmentName"]
+	if !svcOk {
+		log.Warnf("No ServiceName set for %s!", taskInfo.TaskId)
+		if taskInfo.Container != nil && taskInfo.Container.Docker != nil && taskInfo.Container.Docker.Image != nil {
+			svcName = *taskInfo.Container.Docker.Image
+		} else {
+			svcName = "undefined-servicename"
+		}
+	}
+	if !envOk {
+		log.Warnf("No ServiceName set for %s! Defaulting to 'dev'", taskInfo.TaskId)
+		envName = "dev"
+	}
+	envVars = append(envVars, "SERVICE_NAME="+svcName)
+	envVars = append(envVars, "ENVIRONMENT_NAME="+envName)
 
 	return envVars
 }
