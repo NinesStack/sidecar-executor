@@ -265,6 +265,14 @@ func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string) []string {
 	envVars = append(envVars, "SERVICE_NAME="+svcName)
 	envVars = append(envVars, "ENVIRONMENT_NAME="+envName)
 
+	// We parse out and expose the version from the Docker tag as well
+	versionParts := strings.Split(*taskInfo.Container.Docker.Image, ":")
+	if len(versionParts) < 2 {
+		envVars = append(envVars, "SERVICE_VERSION=latest")
+	} else {
+		envVars = append(envVars, "SERVICE_VERSION="+versionParts[1])
+	}
+
 	return envVars
 }
 

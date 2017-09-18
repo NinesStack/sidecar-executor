@@ -54,7 +54,7 @@ func Test_PullImage(t *testing.T) {
 
 func Test_CheckImage(t *testing.T) {
 	Convey("CheckImage()", t, func() {
-		image := "gonitro/sidecar:latest"
+		image := "gonitro/sidecar:1.0.0"
 		images := []docker.APIImages{
 			{
 				RepoTags: []string{image, "sidecar", "sidecar:latest"},
@@ -149,7 +149,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		// The whole structure is full of pointers, so we have to define
 		// a bunch of things so we can take their address.
 		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
-		image := "foo/foo:foo"
+		image := "foo/foo:1.0.0"
 		cpus := "cpus"
 		cpusValue := float64(0.5)
 		memory := "mem"
@@ -290,19 +290,23 @@ func Test_ConfigGeneration(t *testing.T) {
 
 		Convey("maps ports into the environment", func() {
 			// We index backward to find the vars we just set
-			So(opts.Config.Env[len(opts.Config.Env)-4], ShouldEqual, "MESOS_PORT_443=10270")
+			So(opts.Config.Env[len(opts.Config.Env)-5], ShouldEqual, "MESOS_PORT_443=10270")
 		})
 
 		Convey("maps the hostname into the environment", func() {
-			So(opts.Config.Env[len(opts.Config.Env)-3], ShouldEqual, "MESOS_HOSTNAME="+hostname)
+			So(opts.Config.Env[len(opts.Config.Env)-4], ShouldEqual, "MESOS_HOSTNAME="+hostname)
 		})
 
 		Convey("maps the ServiceName into the environment", func() {
-			So(opts.Config.Env[len(opts.Config.Env)-2], ShouldEqual, "SERVICE_NAME="+svcName)
+			So(opts.Config.Env[len(opts.Config.Env)-3], ShouldEqual, "SERVICE_NAME="+svcName)
 		})
 
 		Convey("maps the EnvironmentName into the environment", func() {
-			So(opts.Config.Env[len(opts.Config.Env)-1], ShouldEqual, "ENVIRONMENT_NAME="+envName)
+			So(opts.Config.Env[len(opts.Config.Env)-2], ShouldEqual, "ENVIRONMENT_NAME="+envName)
+		})
+
+		Convey("maps the version into the environment", func() {
+			So(opts.Config.Env[len(opts.Config.Env)-1], ShouldEqual, "SERVICE_VERSION=1.0.0")
 		})
 
 		Convey("fills in the exposed ports", func() {
