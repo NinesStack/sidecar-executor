@@ -172,8 +172,15 @@ func PortsForTask(taskInfo *mesos.TaskInfo) map[docker.Port]struct{} {
 		if port.ContainerPort == nil {
 			continue
 		}
-		portStr := docker.Port(strconv.Itoa(int(*port.ContainerPort)) + "/tcp") // TODO UDP support?
-		ports[portStr] = struct{}{}
+
+		protocols := port.GetProtocol()
+		if protocols == "" {
+			protocols = "tcp"
+		}
+		for _, proto := range strings.Split(protocols, ",") {
+			portStr := docker.Port(strconv.Itoa(int(*port.ContainerPort)) + "/" + proto)
+			ports[portStr] = struct{}{}
+		}
 	}
 
 	log.Debugf("Ports: %#v", ports)
@@ -314,10 +321,17 @@ func PortBindingsForTask(taskInfo *mesos.TaskInfo) map[docker.Port][]docker.Port
 		if port.HostPort == nil {
 			continue
 		}
-		portBinds[docker.Port(strconv.Itoa(int(*port.ContainerPort))+"/tcp")] = // TODO UDP support?
-			[]docker.PortBinding{
-				docker.PortBinding{HostPort: strconv.Itoa(int(*port.HostPort))},
-			}
+
+		protocols := port.GetProtocol()
+		if protocols == "" {
+			protocols = "tcp"
+		}
+		for _, proto := range strings.Split(protocols, ",") {
+			portBinds[docker.Port(strconv.Itoa(int(*port.ContainerPort))+"/"+proto)] =
+				[]docker.PortBinding{
+					{HostPort: strconv.Itoa(int(*port.HostPort))},
+				}
+		}
 	}
 
 	log.Debugf("Port Bindings: %#v", portBinds)

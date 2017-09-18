@@ -7,6 +7,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	. "github.com/smartystreets/goconvey/convey"
@@ -165,15 +166,18 @@ func Test_ConfigGeneration(t *testing.T) {
 		capDropValue := "NET_ADMIN"
 
 		svcName := "dev-test-app"
-		svcNameLabel := "ServiceName="+svcName
+		svcNameLabel := "ServiceName=" + svcName
 		envName := "dev"
-		envNameLabel := "EnvironmentName="+envName
+		envNameLabel := "EnvironmentName=" + envName
 
 		host := mesos.ContainerInfo_DockerInfo_HOST
 
 		port := uint32(8080)
 		port2 := uint32(443)
 		port2_hp := uint32(10270)
+		port3 := uint32(9090)
+		port3_hp := uint32(10271)
+		port3Proto := "tcp,udp"
 
 		v1_cp := "/tmp/somewhere"
 		v1_hp := "/tmp/elsewhere"
@@ -183,7 +187,6 @@ func Test_ConfigGeneration(t *testing.T) {
 
 		hostname := "beowulf.example.com"
 		hostKey := "TASK_HOST"
-
 
 		taskInfo := &mesos.TaskInfo{
 			TaskId: &mesos.TaskID{Value: &taskId},
@@ -224,6 +227,11 @@ func Test_ConfigGeneration(t *testing.T) {
 						{
 							ContainerPort: &port2,
 							HostPort:      &port2_hp,
+						},
+						{
+							ContainerPort: &port3,
+							HostPort:      &port3_hp,
+							Protocol:      &port3Proto,
 						},
 					},
 				},
@@ -290,7 +298,8 @@ func Test_ConfigGeneration(t *testing.T) {
 
 		Convey("maps ports into the environment", func() {
 			// We index backward to find the vars we just set
-			So(opts.Config.Env[len(opts.Config.Env)-5], ShouldEqual, "MESOS_PORT_443=10270")
+			spew.Dump(opts.Config.Env)
+			So(opts.Config.Env[len(opts.Config.Env)-6], ShouldEqual, "MESOS_PORT_443=10270")
 		})
 
 		Convey("maps the hostname into the environment", func() {
@@ -310,8 +319,10 @@ func Test_ConfigGeneration(t *testing.T) {
 		})
 
 		Convey("fills in the exposed ports", func() {
-			So(len(opts.Config.ExposedPorts), ShouldEqual, 2)
-			So(opts.Config.ExposedPorts["8080/tcp"], ShouldNotBeNil)
+			So(len(opts.Config.ExposedPorts), ShouldEqual, 4)
+			So(opts.Config.ExposedPorts, ShouldContainKey, docker.Port("8080/tcp"))
+			So(opts.Config.ExposedPorts, ShouldContainKey, docker.Port("9090/tcp"))
+			So(opts.Config.ExposedPorts, ShouldContainKey, docker.Port("9090/udp"))
 		})
 
 		Convey("has the right image name", func() {
@@ -340,8 +351,10 @@ func Test_ConfigGeneration(t *testing.T) {
 		})
 
 		Convey("handles port bindings", func() {
-			So(len(opts.HostConfig.PortBindings), ShouldEqual, 1)
+			So(len(opts.HostConfig.PortBindings), ShouldEqual, 3)
 			So(opts.HostConfig.PortBindings["443/tcp"][0].HostPort, ShouldEqual, "10270")
+			So(opts.HostConfig.PortBindings["9090/tcp"][0].HostPort, ShouldEqual, "10271")
+			So(opts.HostConfig.PortBindings["9090/udp"][0].HostPort, ShouldEqual, "10271")
 		})
 
 		Convey("uses the right network mode when it's set", func() {
