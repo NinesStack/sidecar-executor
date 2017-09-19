@@ -242,36 +242,34 @@ func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string) []string {
 	}
 
 	// We expose the value in the ServiceName and EnvironmentName
-	// labels as an env vars to the container as well.
-	if labels == nil {
-		log.Warn("No ServiceName or EnvironmentName set in Docker labels!")
+	// labels as env vars to the container as well.
+	svcName, svcOk := labels["ServiceName"]
+	envName, envOk := labels["EnvironmentName"]
+	if svcOk {
+		envVars = append(envVars, "SERVICE_NAME="+svcName)
+	} else {
+		log.Warnf("No ServiceName set for %s", taskInfo.TaskId)
+	}
+
+	if envOk {
+		envVars = append(envVars, "ENVIRONMENT_NAME="+envName)
+	} else {
+		log.Warnf("No EnvironmentName set for %s", taskInfo.TaskId)
+	}
+
+	// We parse out and expose the version from the Docker tag as well
+	if taskInfo.Container == nil || taskInfo.Container.Docker == nil || taskInfo.Container.Docker.Image == nil {
+		log.Warnf("Unable to extract version from Docker image for %s", taskInfo.TaskId)
 		return envVars
 	}
 
-	svcName, svcOk := labels["ServiceName"]
-	envName, envOk := labels["EnvironmentName"]
-	if !svcOk {
-		log.Warnf("No ServiceName set for %s!", taskInfo.TaskId)
-		if taskInfo.Container != nil && taskInfo.Container.Docker != nil && taskInfo.Container.Docker.Image != nil {
-			svcName = *taskInfo.Container.Docker.Image
-		} else {
-			svcName = "undefined-servicename"
-		}
-	}
-	if !envOk {
-		log.Warnf("No ServiceName set for %s! Defaulting to 'dev'", taskInfo.TaskId)
-		envName = "dev"
-	}
-	envVars = append(envVars, "SERVICE_NAME="+svcName)
-	envVars = append(envVars, "ENVIRONMENT_NAME="+envName)
-
-	// We parse out and expose the version from the Docker tag as well
 	versionParts := strings.Split(*taskInfo.Container.Docker.Image, ":")
 	if len(versionParts) < 2 {
-		envVars = append(envVars, "SERVICE_VERSION=latest")
-	} else {
-		envVars = append(envVars, "SERVICE_VERSION="+versionParts[1])
+		log.Warnf("Unable to extract version from Docker image for %s", taskInfo.TaskId)
+		return envVars
 	}
+
+	envVars = append(envVars, "SERVICE_VERSION="+versionParts[1])
 
 	return envVars
 }
