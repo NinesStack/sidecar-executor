@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Nitro/sidecar-executor/container"
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/mesosproto"
-	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/go-director"
 	. "github.com/smartystreets/goconvey/convey"
 )
@@ -226,19 +226,50 @@ func Test_logTaskEnv(t *testing.T) {
 		}
 
 		Convey("dumps the vars it finds", func() {
-			logTaskEnv(taskInfo)
+			logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
 
 			So(string(output.Bytes()), ShouldContainSubstring, "--------")
 			So(string(output.Bytes()), ShouldContainSubstring, "BOCACCIO=author")
 		})
 
-		Convey("reports when there are none", func() {
+		Convey("has environment and service name if defined", func() {
+			key := "label"
+			svcName := "ServiceName=test-service"
+			envName := "EnvironmentName=dev"
+			taskInfo.Container.Docker.Parameters = []*mesos.Parameter{
+				{
+					Key:   &key,
+					Value: &svcName,
+				},
+				{
+					Key:   &key,
+					Value: &envName,
+				},
+			}
+
+			logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
+
+			So(string(output.Bytes()), ShouldContainSubstring, "SERVICE_NAME=test-service")
+			So(string(output.Bytes()), ShouldContainSubstring, "ENVIRONMENT_NAME=dev")
+		})
+
+		Convey("leaves environment and service undefined if no labels are set", func() {
 			taskInfo.Container.Docker.Parameters = []*mesos.Parameter{}
 
-			logTaskEnv(taskInfo)
+			logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
 
-			So(string(output.Bytes()), ShouldContainSubstring, "No Docker environment")
+			So(string(output.Bytes()), ShouldNotContainSubstring, "SERVICE_NAME=")
+			So(string(output.Bytes()), ShouldNotContainSubstring, "ENVIRONMENT_NAME=")
 		})
+
+		Convey("leaves version unset if it can't be parsed", func() {
+			image := "test-service"
+			taskInfo.Container.Docker.Image = &image
+			logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
+
+			So(string(output.Bytes()), ShouldNotContainSubstring, "SERVICE_VERSION=")
+		})
+
 	})
 }
 
@@ -260,11 +291,11 @@ func Test_watchContainer(t *testing.T) {
 
 		client.ListContainersContainers = []docker.APIContainers{
 			{
-				ID: "deadbeef0010",
+				ID:    "deadbeef0010",
 				State: "exited",
 			},
 			{
-				ID: "running00010",
+				ID:    "running00010",
 				State: "running",
 			},
 		}
@@ -335,13 +366,13 @@ func Test_SetProcessName(t *testing.T) {
 		originalLen := len(os.Args[0])
 
 		Convey("bounds the name length to existing length", func() {
-			SetProcessName(strings.Repeat("x", originalLen + 10))
+			SetProcessName(strings.Repeat("x", originalLen+10))
 			So(len(os.Args[0]), ShouldEqual, originalLen)
 		})
 
 		Convey("modifies ARGV[0] correctly and pads name", func() {
 			SetProcessName("decameron")
-			So(os.Args[0], ShouldResemble, "decameron" + strings.Repeat(" ", originalLen - len("decameron")))
+			So(os.Args[0], ShouldResemble, "decameron"+strings.Repeat(" ", originalLen-len("decameron")))
 		})
 	})
 }

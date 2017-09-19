@@ -75,8 +75,6 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	log.Infof("Launching task %s with command '%s'", taskInfo.GetName(), taskInfo.Command.GetValue())
 	log.Info("Task ID ", taskInfo.GetTaskId().GetValue())
 
-	logTaskEnv(taskInfo)
-
 	// We need to tell the scheduler that we started the task
 	exec.sendStatus(TaskRunning, taskInfo.GetTaskId())
 
@@ -96,6 +94,9 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// Configure the container
 	containerConfig := container.ConfigForTask(taskInfo, exec.config.ForceCpuLimit, exec.config.ForceMemoryLimit)
+
+	// Log out what we're starting up with
+	logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
 
 	// Try to decrypt any existing Vault encoded env.
 	decryptedEnv, err := exec.vault.DecryptAllEnv(containerConfig.Config.Env)

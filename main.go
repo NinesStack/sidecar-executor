@@ -117,8 +117,8 @@ func logConfig() {
 	log.Infof("---------------------------------------")
 }
 
-func logTaskEnv(taskInfo *mesos.TaskInfo) {
-	env := container.EnvForTask(taskInfo)
+func logTaskEnv(taskInfo *mesos.TaskInfo, labels map[string]string) {
+	env := container.EnvForTask(taskInfo, labels)
 	if len(env) < 1 {
 		log.Info("No Docker environment provided")
 		return
