@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,8 @@ import (
 // Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
 // See: https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
 const defaultCpuPeriod = 50000 // 50ms
+
+var portProtocolsTokenizer = regexp.MustCompile(",\\s?")
 
 // Our own narrowly-scoped interface for Docker client
 type DockerClient interface {
@@ -164,6 +167,23 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 	return config
 }
 
+// Extract the port protocols. If no protocol is found, default to TCP
+func getPortProtocols(port *mesos.ContainerInfo_DockerInfo_PortMapping) []string {
+	matches := portProtocolsTokenizer.Split(port.GetProtocol(), -1)
+
+	var protocols []string
+	// Filter out empty strings
+	for _, protocol := range matches {
+		if protocol == "" {
+			return []string{"tcp"}
+		} else {
+			protocols = append(protocols, protocol)
+		}
+	}
+
+	return protocols
+}
+
 // Translate Mesos TaskInfo port records in Docker ports map. These show up as EXPOSE
 func PortsForTask(taskInfo *mesos.TaskInfo) map[docker.Port]struct{} {
 	ports := make(map[docker.Port]struct{}, len(taskInfo.Container.Docker.PortMappings))
@@ -172,8 +192,11 @@ func PortsForTask(taskInfo *mesos.TaskInfo) map[docker.Port]struct{} {
 		if port.ContainerPort == nil {
 			continue
 		}
-		portStr := docker.Port(strconv.Itoa(int(*port.ContainerPort)) + "/tcp") // TODO UDP support?
-		ports[portStr] = struct{}{}
+
+		for _, proto := range getPortProtocols(port) {
+			portStr := docker.Port(strconv.Itoa(int(*port.ContainerPort)) + "/" + proto)
+			ports[portStr] = struct{}{}
+		}
 	}
 
 	log.Debugf("Ports: %#v", ports)
@@ -314,10 +337,13 @@ func PortBindingsForTask(taskInfo *mesos.TaskInfo) map[docker.Port][]docker.Port
 		if port.HostPort == nil {
 			continue
 		}
-		portBinds[docker.Port(strconv.Itoa(int(*port.ContainerPort))+"/tcp")] = // TODO UDP support?
-			[]docker.PortBinding{
-				docker.PortBinding{HostPort: strconv.Itoa(int(*port.HostPort))},
-			}
+
+		for _, proto := range getPortProtocols(port) {
+			portBinds[docker.Port(strconv.Itoa(int(*port.ContainerPort))+"/"+proto)] =
+				[]docker.PortBinding{
+					{HostPort: strconv.Itoa(int(*port.HostPort))},
+				}
+		}
 	}
 
 	log.Debugf("Port Bindings: %#v", portBinds)
