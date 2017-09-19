@@ -7,7 +7,6 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	. "github.com/smartystreets/goconvey/convey"
@@ -298,7 +297,6 @@ func Test_ConfigGeneration(t *testing.T) {
 
 		Convey("maps ports into the environment", func() {
 			// We index backward to find the vars we just set
-			spew.Dump(opts.Config.Env)
 			So(opts.Config.Env[len(opts.Config.Env)-6], ShouldEqual, "MESOS_PORT_443=10270")
 		})
 
