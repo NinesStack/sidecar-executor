@@ -211,8 +211,10 @@ func Test_logTaskEnv(t *testing.T) {
 		log.SetOutput(output) // Don't show the output
 		key := "env"
 		value := "BOCACCIO=author"
+		taskId := "my-task-id"
 
 		taskInfo := &mesos.TaskInfo{
+			TaskId: &mesos.TaskID{Value: &taskId},
 			Container: &mesos.ContainerInfo{
 				Docker: &mesos.ContainerInfo_DockerInfo{
 					Parameters: []*mesos.Parameter{
