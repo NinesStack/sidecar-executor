@@ -271,13 +271,13 @@ func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string) []string {
 	if svcOk {
 		envVars = append(envVars, "SERVICE_NAME="+svcName)
 	} else {
-		log.Warnf("No ServiceName set for %s", taskInfo.TaskId)
+		log.Warnf("No ServiceName set for %s", taskInfo.TaskId.Value)
 	}
 
 	if envOk {
 		envVars = append(envVars, "ENVIRONMENT_NAME="+envName)
 	} else {
-		log.Warnf("No EnvironmentName set for %s", taskInfo.TaskId)
+		log.Warnf("No EnvironmentName set for %s", taskInfo.TaskId.Value)
 	}
 
 	// We parse out and expose the version from the Docker tag as well
