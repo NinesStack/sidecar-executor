@@ -1,8 +1,12 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Nitro/sidecar-executor/container"
@@ -92,11 +96,23 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 		log.Info("Re-using existing image... already present")
 	}
 
+	// Additional environment variables we'll pass to the container
+	var addEnvVars []string
+	if exec.config.SeedSidecar {
+		// Fetch the Mesos slave list and append the SIDECAR_SEEDS env var
+		addEnvVars = exec.addSidecarSeeds(addEnvVars)
+	}
+
 	// Configure the container
-	containerConfig := container.ConfigForTask(taskInfo, exec.config.ForceCpuLimit, exec.config.ForceMemoryLimit)
+	containerConfig := container.ConfigForTask(
+		taskInfo,
+		exec.config.ForceCpuLimit,
+		exec.config.ForceMemoryLimit,
+		addEnvVars,
+	)
 
 	// Log out what we're starting up with
-	logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
+	exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), addEnvVars)
 
 	// Try to decrypt any existing Vault encoded env.
 	decryptedEnv, err := exec.vault.DecryptAllEnv(containerConfig.Config.Env)
@@ -134,6 +150,105 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	// can't send us any further updates.
 	go exec.watchContainer(cntnr.ID, shouldCheckSidecar(containerConfig))
 	go exec.monitorTask(cntnr.ID[:12], taskInfo)
+}
+
+// getMasterHostname talks to the local worker endpoint and discovers the
+// Mesos master hostname.
+func (exec *sidecarExecutor) getMasterHostname() (string, error) {
+	localEndpoint := "http://" + os.Getenv("MESOS_AGENT_ENDPOINT")
+	if len(localEndpoint) < 8 { // Did we get anything in the env var?
+		return "", fmt.Errorf("Can't get MESOS_AGENT_ENDPOINT from env! Won't provide Sidecar seeds.")
+	}
+
+	localStruct := struct {
+		MasterHostname string `json:"master_hostname"`
+	}{}
+
+	// Let's find out the Mesos master's hostname
+	resp, err := exec.fetcher.Get(localEndpoint)
+	defer func() {
+		if resp != nil {
+			resp.Body.Close()
+		}
+	}()
+
+	if err != nil {
+		return "", fmt.Errorf("Unable to fetch Mesos master info from worker endpoint: %s", err)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("Error reading response body from Mesos worker! '%s'", err)
+	}
+
+	err = json.Unmarshal(body, &localStruct)
+	if err != nil {
+		return "", fmt.Errorf("Error parsing response body from Mesos worker! '%s'", err)
+	}
+
+	return localStruct.MasterHostname, nil
+}
+
+// Used only in getWorkerHostnames
+type workersStruct struct {
+	Hostname string `json:"hostname"`
+}
+
+// getWorkerHostnames returns a slice of all the current worker hostnames
+func (exec *sidecarExecutor) getWorkerHostnames(masterHostname string) ([]string, error) {
+	masterEndpoint := "http://" + masterHostname + ":5050/slaves"
+
+	masterStruct := struct {
+		Slaves []workersStruct `json:"slaves"`
+	}{}
+
+	// Let's find out the Mesos master's hostname
+	resp, err := exec.fetcher.Get(masterEndpoint)
+	defer func() {
+		if resp != nil {
+			resp.Body.Close()
+		}
+	}()
+
+	if err != nil {
+		return nil, fmt.Errorf("Unable to fetch info from master endpoint: %s", err)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("Error reading response body from Mesos master! '%s'", err)
+	}
+
+	err = json.Unmarshal(body, &masterStruct)
+	if err != nil {
+		return nil, fmt.Errorf("Error parsing response body from Mesos master! '%s'", err)
+	}
+
+	var workers []string
+	for _, worker := range masterStruct.Slaves {
+		workers = append(workers, worker.Hostname)
+	}
+
+	return workers, nil
+}
+
+// addSidecarSeeds mutates the passed slice and inserts an env var formatted
+// string (FOO=BAR_1) containing the list of Sidecar seeds that should be
+// used to bootstrap a Sidecar instance.
+func (exec *sidecarExecutor) addSidecarSeeds(envVars []string) []string {
+	masterHostname, err := exec.getMasterHostname()
+	if err != nil {
+		log.Error(err.Error())
+		return envVars
+	}
+
+	workerNames, err := exec.getWorkerHostnames(masterHostname)
+	if err != nil {
+		log.Error(err.Error())
+		return envVars
+	}
+
+	return append(envVars, "SIDECAR_SEEDS="+strings.Join(workerNames, ","))
 }
 
 func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesos.TaskID) {
@@ -189,12 +304,12 @@ func (exec *sidecarExecutor) Error(driver executor.ExecutorDriver, err string) {
 
 // Check if it should check Sidecar status, assuming enabled by default
 func shouldCheckSidecar(containerConfig *docker.CreateContainerOptions) bool {
-	value, ok:= containerConfig.Config.Labels["SidecarDiscover"]
+	value, ok := containerConfig.Config.Labels["SidecarDiscover"]
 	if !ok {
 		return true
 	}
 
-	if enabled, err:= strconv.ParseBool(value); err == nil {
+	if enabled, err := strconv.ParseBool(value); err == nil {
 		return enabled
 	}
 

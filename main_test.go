@@ -27,7 +27,7 @@ type mockFetcher struct {
 	callCount     int
 }
 
-func (m *mockFetcher) Get(string) (*http.Response, error) {
+func (m *mockFetcher) Get(url string) (*http.Response, error) {
 	m.callCount += 1
 
 	if m.ShouldBadJson {
@@ -38,6 +38,21 @@ func (m *mockFetcher) Get(string) (*http.Response, error) {
 		return nil, errors.New("OMG something went horribly wrong!")
 	}
 
+	// Mesos master
+	if strings.Contains(url, "mesos-master") {
+		return httpResponse(200,
+			`{"slaves":[{"hostname": "bede"},{"hostname":"chaucer"}]}`,
+		), nil
+	}
+
+	// Mesos worker
+	if strings.Contains(url, "mesos-worker") {
+		return httpResponse(200,
+			`{"master_hostname":"mesos-master"}`,
+		), nil
+	}
+
+	// Sidecar
 	if m.ShouldFail {
 		return m.failedRequest()
 	} else {
@@ -213,6 +228,11 @@ func Test_logTaskEnv(t *testing.T) {
 		value := "BOCACCIO=author"
 		taskId := "my-task-id"
 
+		fetcher := &mockFetcher{}
+		client := &container.MockDockerClient{}
+		exec := newSidecarExecutor(client, &docker.AuthConfiguration{})
+		exec.fetcher = fetcher
+
 		taskInfo := &mesos.TaskInfo{
 			TaskId: &mesos.TaskID{Value: &taskId},
 			Container: &mesos.ContainerInfo{
@@ -228,7 +248,7 @@ func Test_logTaskEnv(t *testing.T) {
 		}
 
 		Convey("dumps the vars it finds", func() {
-			logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
+			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
 			So(string(output.Bytes()), ShouldContainSubstring, "--------")
 			So(string(output.Bytes()), ShouldContainSubstring, "BOCACCIO=author")
@@ -249,7 +269,7 @@ func Test_logTaskEnv(t *testing.T) {
 				},
 			}
 
-			logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
+			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
 			So(string(output.Bytes()), ShouldContainSubstring, "SERVICE_NAME=test-service")
 			So(string(output.Bytes()), ShouldContainSubstring, "ENVIRONMENT_NAME=dev")
@@ -258,7 +278,7 @@ func Test_logTaskEnv(t *testing.T) {
 		Convey("leaves environment and service undefined if no labels are set", func() {
 			taskInfo.Container.Docker.Parameters = []*mesos.Parameter{}
 
-			logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
+			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
 			So(string(output.Bytes()), ShouldNotContainSubstring, "SERVICE_NAME=")
 			So(string(output.Bytes()), ShouldNotContainSubstring, "ENVIRONMENT_NAME=")
@@ -267,11 +287,23 @@ func Test_logTaskEnv(t *testing.T) {
 		Convey("leaves version unset if it can't be parsed", func() {
 			image := "test-service"
 			taskInfo.Container.Docker.Image = &image
-			logTaskEnv(taskInfo, container.LabelsForTask(taskInfo))
+			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
 			So(string(output.Bytes()), ShouldNotContainSubstring, "SERVICE_VERSION=")
 		})
 
+		Convey("shows added env vars", func() {
+			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{"ADDED_VAR=true"})
+			So(string(output.Bytes()), ShouldContainSubstring, "ADDED_VAR=")
+		})
+
+		Convey("adds Sidecar seeds", func() {
+			os.Setenv("MESOS_AGENT_ENDPOINT", "mesos-worker:5050")
+			exec.config.SeedSidecar = true
+			addEnvVars := exec.addSidecarSeeds([]string{})
+			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), addEnvVars)
+			So(string(output.Bytes()), ShouldContainSubstring, "SIDECAR_SEEDS=bede,chaucer")
+		})
 	})
 }
 
