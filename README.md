@@ -107,8 +107,12 @@ the Docker container. Currently the settings available are:
 	SidecarBackoff:      1m5s
 	SidecarPollInterval: 30s
 	SidecarMaxFails:     3
+	SeedSidecar:         false
 	DockerRepository:    https://index.docker.io/v1/
 	LogsSince:           3m
+	ForceCpuLimit:       false
+	ForceMemoryLimit:    false
+	Debug:               false
 ```
 
 All of the environment variables are of the form `EXECUTOR_SIDECAR_RETRY_DELAY`
@@ -147,6 +151,9 @@ with `EXECUTOR_`.
    many _affirmed_ unhealthy checks we need to receive, each spaced apart by
    `SidecarPollInterval`.
 
+ * **SeedSidecar**: Should we query the Mesos master for the list of workers
+   and then provide those in the `SIDECAR_SEEDS` environment variables?
+
  * **DockerRepository**: This is used to match the credentials that we'll store
    from the Docker config. This will follow the same matching order as
    [described here](https://godoc.org/github.com/fsouza/go-dockerclient#NewAuthConfigurationsFromDockerCfg).
@@ -156,6 +163,14 @@ with `EXECUTOR_`.
    logs from the Docker container output to its own stdout and stderr so that
    they show up in the Mesos logs. `LogsSince` is how far back in time we
    reach to get these logs.
+
+ * **ForceCpuLimit**: Should we enfoce the CPU limits in the request using
+   Docker's CPU using cgroups?
+
+ * **ForceMeoryLimit**: Should we enfoce the memory limits in the request using
+   Docker's CPU using cgroups?
+
+ * **Debug**: Should we turn on debug logging (verbose!) for this executor?
 
 Configuring Docker Connectivity
 -------------------------------
