@@ -50,6 +50,7 @@ type Config struct {
 	SidecarBackoff      time.Duration `split_words:"true" default:"1m"`
 	SidecarPollInterval time.Duration `split_words:"true" default:"30s"`
 	SidecarMaxFails     int           `split_words:"true" default:"3"`
+	SeedSidecar         bool          `split_words:"true" default:"false"`
 	DockerRepository    string        `split_words:"true" default:"https://index.docker.io/v1/"`
 	LogsSince           time.Duration `split_words:"true" default:"3m"`
 	ForceCpuLimit       bool          `split_words:"true" default:false`
@@ -98,6 +99,7 @@ func logConfig() {
 	log.Infof(" * SidecarBackoff:      %s", config.SidecarBackoff.String())
 	log.Infof(" * SidecarPollInterval: %s", config.SidecarPollInterval.String())
 	log.Infof(" * SidecarMaxFails:     %d", config.SidecarMaxFails)
+	log.Infof(" * SeedSidecar:         %t", config.SeedSidecar)
 	log.Infof(" * DockerRepository:    %s", config.DockerRepository)
 	log.Infof(" * LogsSince:           %s", config.LogsSince.String())
 	log.Infof(" * ForceCpuLimit:       %t", config.ForceCpuLimit)
@@ -117,8 +119,8 @@ func logConfig() {
 	log.Infof("---------------------------------------")
 }
 
-func logTaskEnv(taskInfo *mesos.TaskInfo, labels map[string]string) {
-	env := container.EnvForTask(taskInfo, labels)
+func (exec *sidecarExecutor) logTaskEnv(taskInfo *mesos.TaskInfo, labels map[string]string, addEnvVars []string) {
+	env := container.EnvForTask(taskInfo, labels, addEnvVars)
 	if len(env) < 1 {
 		log.Info("No Docker environment provided")
 		return
