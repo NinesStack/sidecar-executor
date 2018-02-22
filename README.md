@@ -30,7 +30,7 @@ support for running containers. It supports the core feature set that most
 people actually use. If you are looking for something that it doesn't currently
 provide, pull requests or feature requests are welcome.
 
-###Currently supported:
+### Currently supported:
  * Environment variables
  * Docker labels
  * Exposed port and port mappings
