@@ -166,14 +166,11 @@ func (exec *sidecarExecutor) getMasterHostname() (string, error) {
 
 	// Let's find out the Mesos master's hostname
 	resp, err := exec.fetcher.Get(localEndpoint)
-	defer func() {
-		if resp != nil {
-			resp.Body.Close()
-		}
-	}()
-
 	if err != nil {
 		return "", fmt.Errorf("Unable to fetch Mesos master info from worker endpoint: %s", err)
+	}
+	if resp.Body != nil {
+		defer resp.Body.Close()
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
@@ -189,14 +186,13 @@ func (exec *sidecarExecutor) getMasterHostname() (string, error) {
 	return localStruct.MasterHostname, nil
 }
 
-// Used only in getWorkerHostnames
-type workersStruct struct {
-	Hostname string `json:"hostname"`
-}
-
 // getWorkerHostnames returns a slice of all the current worker hostnames
 func (exec *sidecarExecutor) getWorkerHostnames(masterHostname string) ([]string, error) {
 	masterEndpoint := "http://" + masterHostname + ":5050/slaves"
+
+	type workersStruct struct {
+		Hostname string `json:"hostname"`
+	}
 
 	masterStruct := struct {
 		Slaves []workersStruct `json:"slaves"`
@@ -204,14 +200,11 @@ func (exec *sidecarExecutor) getWorkerHostnames(masterHostname string) ([]string
 
 	// Let's find out the Mesos master's hostname
 	resp, err := exec.fetcher.Get(masterEndpoint)
-	defer func() {
-		if resp != nil {
-			resp.Body.Close()
-		}
-	}()
-
 	if err != nil {
 		return nil, fmt.Errorf("Unable to fetch info from master endpoint: %s", err)
+	}
+	if resp.Body != nil {
+		defer resp.Body.Close()
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)

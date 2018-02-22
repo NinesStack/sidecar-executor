@@ -164,11 +164,11 @@ with `EXECUTOR_`.
    they show up in the Mesos logs. `LogsSince` is how far back in time we
    reach to get these logs.
 
- * **ForceCpuLimit**: Should we enfoce the CPU limits in the request using
-   Docker's CPU using cgroups?
+ * **ForceCpuLimit**: Should we enforce the CPU limits in the request using
+   cgroups (via Docker)?
 
- * **ForceMeoryLimit**: Should we enfoce the memory limits in the request using
-   Docker's CPU using cgroups?
+ * **ForceMemoryLimit**: Should we enforce the memory limits in the request using
+   cgroups (via Docker)?
 
  * **Debug**: Should we turn on debug logging (verbose!) for this executor?
 
