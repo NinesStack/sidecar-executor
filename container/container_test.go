@@ -270,8 +270,8 @@ func Test_ConfigGeneration(t *testing.T) {
 			},
 		}
 
-		opts := ConfigForTask(taskInfo, false, false)
-		optsForced := ConfigForTask(taskInfo, true, true)
+		opts := ConfigForTask(taskInfo, false, false, []string{})
+		optsForced := ConfigForTask(taskInfo, true, true, []string{})
 
 		Convey("gets the name from the task ID", func() {
 			So(opts.Name, ShouldEqual, "mesos-"+taskId)
@@ -362,7 +362,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		Convey("defaults to correct network mode", func() {
 			none := mesos.ContainerInfo_DockerInfo_NONE
 			taskInfo.Container.Docker.Network = &none
-			opts := ConfigForTask(taskInfo, false, false)
+			opts := ConfigForTask(taskInfo, false, false, []string{})
 			So(opts.HostConfig.NetworkMode, ShouldEqual, "none")
 		})
 	})
