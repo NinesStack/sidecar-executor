@@ -155,7 +155,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 // getMasterHostname talks to the local worker endpoint and discovers the
 // Mesos master hostname.
 func (exec *sidecarExecutor) getMasterHostname() (string, error) {
-	localEndpoint := "http://" + os.Getenv("MESOS_AGENT_ENDPOINT")
+	localEndpoint := "http://" + os.Getenv("MESOS_AGENT_ENDPOINT") + "/state"
 	if len(localEndpoint) < 8 { // Did we get anything in the env var?
 		return "", fmt.Errorf("Can't get MESOS_AGENT_ENDPOINT from env! Won't provide Sidecar seeds.")
 	}
