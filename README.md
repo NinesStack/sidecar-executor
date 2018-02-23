@@ -39,6 +39,7 @@ provide, pull requests or feature requests are welcome.
  * Capability Add
  * Capability Drop
  * Resolve environment variables stored in [Vault](https://www.vaultproject.io)
+ * Enforce CPU and Memory limits via Docker cgroups
 
 This set of features probably supports most of the production containers out
 there.
