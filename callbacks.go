@@ -12,8 +12,8 @@ import (
 	"github.com/Nitro/sidecar-executor/container"
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
-	"github.com/mesos/mesos-go/executor"
-	mesos "github.com/mesos/mesos-go/mesosproto"
+	"github.com/mesos/mesos-go/api/v0/executor"
+	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
 	"github.com/relistan/go-director"
 )
 
@@ -150,6 +150,8 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	// can't send us any further updates.
 	go exec.watchContainer(cntnr.ID, shouldCheckSidecar(containerConfig))
 	go exec.monitorTask(cntnr.ID[:12], taskInfo)
+
+	log.Info("Launched Sidecar tasks... ready for Mesos instructions")
 }
 
 // getMasterHostname talks to the local worker endpoint and discovers the

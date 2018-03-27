@@ -16,8 +16,8 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
-	"github.com/mesos/mesos-go/executor"
-	mesos "github.com/mesos/mesos-go/mesosproto"
+	"github.com/mesos/mesos-go/api/v0/executor"
+	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
 	"github.com/Nitro/sidecar/service"
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/envconfig"
@@ -181,7 +181,7 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 // Note that because of the way the retries work, the loop timing is a
 // lower bound on the delay.
 func (exec *sidecarExecutor) watchContainer(containerId string, checkSidecar bool) {
-	log.Infof("Watching container %s [checkSidecar: %t]", containerId, checkSidecar)
+	log.Infof("Watching container %s [checkSidecar: %t]", containerId[:12], checkSidecar)
 	if checkSidecar {
 		time.Sleep(config.SidecarBackoff)
 	}
@@ -238,7 +238,7 @@ func sidecarLookup(containerId string, services SidecarServices) (*service.Servi
 	hostname := os.Getenv("TASK_HOST") // Mesos supplies this
 	if _, ok := services.Servers[hostname]; !ok {
 		// Don't even have this host!
-		log.Warnf("Host not found in Sidecar! (%s)", hostname)
+		log.Warnf("Host not found in Sidecar, can't manage this container! (%s)", hostname)
 		return nil, ok
 	}
 
