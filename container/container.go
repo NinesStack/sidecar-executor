@@ -10,7 +10,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
-	mesos "github.com/mesos/mesos-go/mesosproto"
+	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
 )
 
 // Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity

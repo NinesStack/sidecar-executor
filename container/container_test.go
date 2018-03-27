@@ -8,7 +8,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
-	mesos "github.com/mesos/mesos-go/mesosproto"
+	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
