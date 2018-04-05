@@ -135,7 +135,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	log.Info("Starting container with ID " + cntnr.ID[:12])
 	err = exec.client.StartContainer(cntnr.ID, nil)
 	if err != nil {
-		log.Errorf("Failed to create Docker container: %s", err.Error())
+		log.Errorf("Failed to start Docker container: %s", err.Error())
 		exec.failTask(taskInfo)
 		return
 	}
@@ -281,7 +281,9 @@ func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *me
 	exec.sendStatus(status, taskID)
 
 	// We have to give the driver time to send the message
-	time.Sleep(1 * time.Second)
+	time.Sleep(StatusSleepTime)
+
+	log.Info("Executor believes container has exited, stopping Mesos driver")
 	exec.driver.Stop()
 }
 
