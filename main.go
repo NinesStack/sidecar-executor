@@ -34,7 +34,7 @@ const (
 )
 
 const (
-	StatusSleepTime = 1 * time.Second // How long we wait for final status updates to hit Mesos worker
+	StatusSleepTime = 2 * time.Second // How long we wait for final status updates to hit Mesos worker
 )
 
 var (
@@ -440,7 +440,7 @@ func main() {
 
 	driver, err := executor.NewMesosExecutorDriver(dconfig)
 	if err != nil || driver == nil {
-		log.Info("Unable to create an ExecutorDriver ", err.Error())
+		log.Fatalf("Unable to create an ExecutorDriver: %s", err)
 	}
 
 	// Give the executor a reference to the driver
@@ -458,8 +458,11 @@ func main() {
 
 	_, err = driver.Join()
 	if err != nil {
-		log.Info("driver failed:", err)
+		log.Info("Driver failed:", err)
 	}
+
+	log.Info("Driver exited without error. Waiting 2 seconds to shut down executor.")
+	time.Sleep(2*time.Second)
 
 	log.Info("Sidecar Executor exiting")
 }
