@@ -11,6 +11,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
+	"github.com/pborman/uuid"
 )
 
 // Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
@@ -406,7 +407,9 @@ func getResource(name string, taskInfo *mesos.TaskInfo) *mesos.Resource {
 const DockerNamePrefix = "mesos-"
 
 func GetContainerName(taskId *mesos.TaskID) string {
-	return DockerNamePrefix + *taskId.Value
+	// unique uuid based on the TaskId
+	containerUUID := uuid.NewSHA1(uuid.NIL, []byte(*taskId.Value))
+	return DockerNamePrefix + containerUUID.String()
 }
 
 func GetExitCode(client DockerClient, containerId string) (int, error) {
