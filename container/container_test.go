@@ -149,6 +149,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		// The whole structure is full of pointers, so we have to define
 		// a bunch of things so we can take their address.
 		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
+		uuidTaskId := "f317e960-8579-5258-95c8-96ccca14f317" // UUID based on ssh1(taskId)
 		image := "foo/foo:1.0.0"
 		cpus := "cpus"
 		cpusValue := float64(0.5)
@@ -274,7 +275,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		optsForced := ConfigForTask(taskInfo, true, true, []string{})
 
 		Convey("gets the name from the task ID", func() {
-			So(opts.Name, ShouldEqual, "mesos-"+taskId)
+			So(opts.Name, ShouldEqual, "mesos-"+uuidTaskId)
 		})
 
 		Convey("properly calculates the CPU limit", func() {
