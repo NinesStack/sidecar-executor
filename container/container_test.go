@@ -333,6 +333,11 @@ func Test_ConfigGeneration(t *testing.T) {
 			So(opts.Config.Labels["ANYTHING"], ShouldEqual, "123=123")
 		})
 
+		Convey("gets Mesos TaskId as label", func() {
+			So(len(opts.Config.Labels), ShouldBeGreaterThanOrEqualTo, 1)
+			So(opts.Config.Labels["TaskId"], ShouldEqual, taskId)
+		})
+
 		Convey("gets the cap-adds", func() {
 			So(len(opts.HostConfig.CapAdd), ShouldEqual, 1)
 			So(opts.HostConfig.CapAdd[0], ShouldEqual, "NET_ADMIN")
