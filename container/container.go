@@ -235,9 +235,30 @@ func getHostname(taskInfo *mesos.TaskInfo) string {
 	return ""
 }
 
+// Map Task Env to Docker Env
+func AppendTaskEnv(envVars [] string, taskInfo * mesos.TaskInfo) [] string {
+	if taskInfo.Executor == nil || taskInfo.Executor.Command == nil ||
+		taskInfo.Executor.Command.Environment == nil ||
+		taskInfo.Executor.Command.Environment.Variables == nil {
+		return envVars
+	}
+
+	for _, vars := range taskInfo.Executor.Command.Environment.Variables {
+		envVars = append(
+			envVars,
+			fmt.Sprintf("%s=%s", *vars.Name, *vars.Value),
+		)
+	}
+
+	return envVars
+}
+
 // Map Mesos environment settings to Docker environment (-e FOO=BAR)
 func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string, addEnvVars []string) []string {
 	var envVars []string
+
+	// Add Task env as Docker Envs (TASK_ID, TASK_DEPLOY_ID, TASK_RACK_ID, TASK_REQUEST_ID, ...)
+	envVars = AppendTaskEnv(envVars, taskInfo)
 
 	for _, param := range getParams("env", taskInfo) {
 		envVars = append(envVars, *param.Value)
