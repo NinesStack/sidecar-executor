@@ -335,8 +335,6 @@ func LabelsForTask(taskInfo *mesos.TaskInfo) map[string]string {
 		labels[values[0]] = values[1]
 	}
 
-	labels["TaskId"] = *taskInfo.TaskId.Value
-
 	return labels
 }
 

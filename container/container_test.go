@@ -293,7 +293,8 @@ func Test_ConfigGeneration(t *testing.T) {
 
 		Convey("populates the environment", func() {
 			So(len(opts.Config.Env), ShouldBeGreaterThan, 1)
-			So(opts.Config.Env[0], ShouldEqual, "SOMETHING=123=123")
+			So(opts.Config.Env[0], ShouldEqual, "TASK_HOST=beowulf.example.com")
+			So(opts.Config.Env[1], ShouldEqual, "SOMETHING=123=123")
 		})
 
 		Convey("maps ports into the environment", func() {
@@ -331,11 +332,6 @@ func Test_ConfigGeneration(t *testing.T) {
 		Convey("gets the labels", func() {
 			So(len(opts.Config.Labels), ShouldBeGreaterThanOrEqualTo, 1)
 			So(opts.Config.Labels["ANYTHING"], ShouldEqual, "123=123")
-		})
-
-		Convey("gets Mesos TaskId as label", func() {
-			So(len(opts.Config.Labels), ShouldBeGreaterThanOrEqualTo, 1)
-			So(opts.Config.Labels["TaskId"], ShouldEqual, taskId)
 		})
 
 		Convey("gets the cap-adds", func() {
