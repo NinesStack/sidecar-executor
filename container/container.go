@@ -236,7 +236,7 @@ func getHostname(taskInfo *mesos.TaskInfo) string {
 }
 
 // Map Task Env to Docker Env
-func AppendTaskEnv(envVars [] string, taskInfo * mesos.TaskInfo) [] string {
+func AppendTaskEnv(envVars []string, taskInfo *mesos.TaskInfo) []string {
 	if taskInfo.Executor == nil || taskInfo.Executor.Command == nil ||
 		taskInfo.Executor.Command.Environment == nil ||
 		taskInfo.Executor.Command.Environment.Variables == nil {
