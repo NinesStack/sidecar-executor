@@ -132,7 +132,7 @@ func Test_GetLogs(t *testing.T) {
 
 		GetLogs(dockerClient, containerId, time.Now().UTC().Unix(), stdout, stderr)
 
-		time.Sleep(1 * time.Millisecond) // Nasty, but lets buffer flush
+		time.Sleep(25 * time.Millisecond) // Nasty, but lets buffer flush
 
 		So(string(stdout.Bytes()), ShouldResemble, prelude)
 		So(string(stderr.Bytes()), ShouldResemble, ending)
