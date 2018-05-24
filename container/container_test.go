@@ -151,6 +151,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
 		uuidTaskId := "f317e960-8579-5258-95c8-96ccca14f317" // UUID based on ssh1(taskId)
 		image := "foo/foo:1.0.0"
+		command := []string{"date"}
 		cpus := "cpus"
 		cpusValue := float64(0.5)
 		memory := "mem"
@@ -269,6 +270,9 @@ func Test_ConfigGeneration(t *testing.T) {
 					},
 				},
 			},
+			Command: &mesos.CommandInfo{
+				Arguments: command,
+			},
 		}
 
 		opts := ConfigForTask(taskInfo, false, false, []string{})
@@ -366,6 +370,10 @@ func Test_ConfigGeneration(t *testing.T) {
 			taskInfo.Container.Docker.Network = &none
 			opts := ConfigForTask(taskInfo, false, false, []string{})
 			So(opts.HostConfig.NetworkMode, ShouldEqual, "none")
+		})
+
+		Convey("uses the command when it's set", func() {
+			So(opts.Config.Cmd, ShouldContain, "date")
 		})
 	})
 }
