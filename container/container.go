@@ -126,7 +126,7 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 	labels := LabelsForTask(taskInfo)
 
 	var command []string
-	if taskInfo.Command != nil {
+	if taskInfo.Command != nil && len(taskInfo.Command.Arguments) > 0 {
 		command = taskInfo.Command.Arguments
 	}
 
