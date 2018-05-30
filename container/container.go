@@ -125,6 +125,11 @@ func GetLogs(client DockerClient, containerId string, since int64, stdout io.Wri
 func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimit bool, envVars []string) *docker.CreateContainerOptions {
 	labels := LabelsForTask(taskInfo)
 
+	var command []string
+	if taskInfo.Command != nil && len(taskInfo.Command.Arguments) > 0 {
+		command = taskInfo.Command.Arguments
+	}
+
 	config := &docker.CreateContainerOptions{
 		Name: GetContainerName(taskInfo.TaskId),
 		Config: &docker.Config{
@@ -132,6 +137,7 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 			ExposedPorts: PortsForTask(taskInfo),
 			Image:        *taskInfo.Container.Docker.Image,
 			Labels:       labels,
+			Cmd:          command,
 		},
 		HostConfig: &docker.HostConfig{
 			Binds:        BindsForTask(taskInfo),
