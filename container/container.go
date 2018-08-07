@@ -145,6 +145,7 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 			NetworkMode:  NetworkForTask(taskInfo),
 			CapAdd:       CapAddForTask(taskInfo),
 			CapDrop:      CapDropForTask(taskInfo),
+			VolumeDriver: VolumeDriverForTask(taskInfo),
 		},
 	}
 
@@ -398,6 +399,17 @@ func CapDropForTask(taskInfo *mesos.TaskInfo) []string {
 		params = append(params, *param.Value)
 	}
 	return params
+}
+
+// Scan for volume-driver
+func VolumeDriverForTask(taskInfo *mesos.TaskInfo) string {
+	var volumeDriver string
+
+	for _, param := range getParams("volume-driver", taskInfo) {
+		volumeDriver = *param.Value
+	}
+
+	return volumeDriver
 }
 
 // Map Mesos enum to strings for Docker

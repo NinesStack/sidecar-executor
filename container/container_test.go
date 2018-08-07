@@ -163,6 +163,8 @@ func Test_ConfigGeneration(t *testing.T) {
 		labelValue := "ANYTHING=123=123"
 		capAdd := "cap-add"
 		capAddValue := "NET_ADMIN"
+		volumeDriver := "volume-driver"
+		volumeDriverValue := "driver_test"
 		capDrop := "cap-drop"
 		capDropValue := "NET_ADMIN"
 
@@ -219,6 +221,10 @@ func Test_ConfigGeneration(t *testing.T) {
 						{
 							Key:   &capDrop,
 							Value: &capDropValue,
+						},
+						{
+							Key:   &volumeDriver,
+							Value: &volumeDriverValue,
 						},
 					},
 					PortMappings: []*mesos.ContainerInfo_DockerInfo_PortMapping{
@@ -346,6 +352,10 @@ func Test_ConfigGeneration(t *testing.T) {
 		Convey("gets the cap-drops", func() {
 			So(len(opts.HostConfig.CapDrop), ShouldEqual, 1)
 			So(opts.HostConfig.CapDrop[0], ShouldEqual, "NET_ADMIN")
+		})
+
+		Convey("gets the Volume Driver", func() {
+			So(opts.HostConfig.VolumeDriver, ShouldEqual, "driver_test")
 		})
 
 		Convey("grabs and formats volume binds properly", func() {
