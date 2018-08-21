@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  branch = "master"
+  name = "github.com/ErikDubbelboer/gspt"
+  packages = ["."]
+  revision = "e39e726e09cc23d1ccf13b36ce10dbdb4a4510e0"
+
+[[projects]]
   name = "github.com/Nitro/sidecar"
   packages = [
     "output",
@@ -237,6 +243,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ec376b8df80d3c4a43f1bf8fb3775d83e94a3ac53f60fe98337da249380fe4e2"
+  inputs-digest = "ad27b8145c2b935437f97ab0bf9e8c59ae96886154244f45c655e54c3cef5660"
   solver-name = "gps-cdcl"
   solver-version = 1
