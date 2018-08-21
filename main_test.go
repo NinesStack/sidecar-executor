@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 	"reflect"
 	"strconv"
 	"strings"
@@ -404,9 +405,12 @@ func Test_SetProcessName(t *testing.T) {
 			So(len(os.Args[0]), ShouldEqual, originalLen)
 		})
 
-		Convey("modifies ARGV[0] correctly and pads name", func() {
+		Convey("modifies ARGV[0] correctly", func() {
 			SetProcessName("decameron")
-			So(os.Args[0], ShouldResemble, "decameron"+strings.Repeat(" ", originalLen-len("decameron")))
+			out, err := exec.Command("/bin/ps", "ax").Output()
+			So(err, ShouldBeNil)
+			So(strings.Contains(string(out), "decameron"), ShouldBeTrue)
 		})
+
 	})
 }

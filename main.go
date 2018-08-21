@@ -8,22 +8,22 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"reflect"
 	"strings"
 	"syscall"
 	"time"
-	"unsafe"
 
+	"fmt"
+
+	"github.com/ErikDubbelboer/gspt"
+	"github.com/Nitro/sidecar-executor/container"
+	"github.com/Nitro/sidecar-executor/vault"
+	"github.com/Nitro/sidecar/service"
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/api/v0/executor"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
-	"github.com/Nitro/sidecar/service"
-	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/envconfig"
 	"github.com/relistan/go-director"
-	"github.com/Nitro/sidecar-executor/vault"
-	"fmt"
 )
 
 const (
@@ -372,22 +372,10 @@ func getDockerAuthConfig() docker.AuthConfiguration {
 	return auth
 }
 
-// Set the process name (must be <= current name)
+// Set the process name using setproctitle() and append arguments after the new title
 func SetProcessName(name string) {
-	argv0str := (*reflect.StringHeader)(unsafe.Pointer(&os.Args[0]))
-	argv0 := (*[1 << 30]byte)(unsafe.Pointer(argv0str.Data))[:argv0str.Len]
-
-	// Limit length to existing length
-	if len(name) > len(argv0) {
-		name = name[:len(argv0)]
-	}
-
-	// Space pad over whole pre-existing name
-	if len(name) < len(argv0) {
-		name = name + strings.Repeat(" ", len(argv0) - len(name))
-	}
-
-	copy(argv0, name)
+	execArgs := os.Args[1:]
+	gspt.SetProcTitle(fmt.Sprintf("%s %s", name, strings.Join(execArgs, " ")))
 }
 
 // Set up some signal handling for kill/term/int and try to shutdown
@@ -462,7 +450,7 @@ func main() {
 	}
 
 	log.Info("Driver exited without error. Waiting 2 seconds to shut down executor.")
-	time.Sleep(2*time.Second)
+	time.Sleep(2 * time.Second)
 
 	log.Info("Sidecar Executor exiting")
 }
