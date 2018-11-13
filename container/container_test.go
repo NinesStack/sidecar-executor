@@ -285,7 +285,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		optsForced := ConfigForTask(taskInfo, true, true, []string{})
 
 		Convey("gets the name from the task ID", func() {
-			So(opts.Name, ShouldEqual, "mesos-"+uuidTaskId)
+			So(opts.Name, ShouldEqual, dockerNamePrefix+taskId+dockerNameSeparator+uuidTaskId)
 		})
 
 		Convey("properly calculates the CPU limit", func() {

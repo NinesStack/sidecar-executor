@@ -14,9 +14,18 @@ import (
 	"github.com/pborman/uuid"
 )
 
-// Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
-// See: https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
-const defaultCpuPeriod = 50000 // 50ms
+const (
+	// Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
+	// See: https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
+	defaultCpuPeriod = 50000 // 50ms
+
+	// Prefix used to name Docker containers in order to distinguish those
+	// created by Mesos from those created manually.
+	dockerNamePrefix = "mesos-"
+
+	// Separator used to separate the container UUID in the container name
+	dockerNameSeparator = "."
+)
 
 var portProtocolsTokenizer = regexp.MustCompile(",\\s?")
 
@@ -461,14 +470,15 @@ func getResource(name string, taskInfo *mesos.TaskInfo) *mesos.Resource {
 	return nil
 }
 
-// Prefix used to name Docker containers in order to distinguish those
-// created by Mesos from those created manually.
-const DockerNamePrefix = "mesos-"
-
 func GetContainerName(taskId *mesos.TaskID) string {
 	// unique uuid based on the TaskId
 	containerUUID := uuid.NewSHA1(uuid.NIL, []byte(*taskId.Value))
-	return DockerNamePrefix + containerUUID.String()
+
+	// Note: We can add another dockerNameSeparator after the UUID field
+	// if we want to add more custom string data after it
+	// Example: dockerNamePrefix + custom_string + dockerNameSeparator + ContainerUUID + dockerNameSeparator + another_custom_string
+	// Details here: https://github.com/apache/mesos/blob/3446e0a43eb16151d0f467e7034b0ca6baefda4a/src/slave/containerizer/docker.cpp#L151
+	return dockerNamePrefix + *taskId.Value + dockerNameSeparator + containerUUID.String()
 }
 
 func GetExitCode(client DockerClient, containerId string) (int, error) {
