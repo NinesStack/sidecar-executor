@@ -445,7 +445,6 @@ func (ffl *FFLexer) Scan() FFTok {
 			if ffl.captureAll {
 				ffl.Output.WriteByte(c)
 			}
-			break
 		case 't':
 			ffl.Output.WriteByte('t')
 			tok = ffl.wantBytes(true_bytes, FFTok_bool)
@@ -471,6 +470,7 @@ func (ffl *FFLexer) Scan() FFTok {
 		default:
 			tok = FFTok_error
 			ffl.Error = FFErr_invalid_char
+			goto lexed
 		}
 	}
 
@@ -553,11 +553,9 @@ func (ffl *FFLexer) scanField(start FFTok, capture bool) ([]byte, error) {
 		} else {
 			return nil, nil
 		}
-
-	default:
-		return nil, fmt.Errorf("ffjson: invalid capture type: %v", start)
 	}
-	panic("not reached")
+
+	return nil, fmt.Errorf("ffjson: invalid capture type: %v", start)
 }
 
 // Captures an entire field value, including recursive objects,
