@@ -56,11 +56,11 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 	// Wait on the watchLooper to return a status
 	err := exec.watchLooper.Wait()
 	if err != nil {
-		log.Errorf("Error! %s", err.Error())
+		log.Errorf("Error! %s", err)
 		// Something went wrong, we better take this thing out!
 		err := container.StopContainer(exec.client, containerName, config.KillTaskTimeout)
 		if err != nil {
-			log.Errorf("Error stopping container %s! %s", containerName, err.Error())
+			log.Errorf("Error stopping container %s! %s", containerName, err)
 		}
 		// Copy the failure logs (hopefully) to stdout/stderr so we can get them
 		exec.copyLogs(containerName)
@@ -88,7 +88,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	if !container.CheckImage(exec.client, taskInfo) || *taskInfo.Container.Docker.ForcePullImage {
 		err := container.PullImage(exec.client, taskInfo, exec.dockerAuth)
 		if err != nil {
-			log.Errorf("Failed to pull image: %s", err.Error())
+			log.Errorf("Failed to pull image: %s", err)
 			exec.failTask(taskInfo)
 			return
 		}
@@ -126,7 +126,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	// create the container
 	cntnr, err := exec.client.CreateContainer(*containerConfig)
 	if err != nil {
-		log.Errorf("Failed to create Docker container: %s", err.Error())
+		log.Errorf("Failed to create Docker container: %s", err)
 		exec.failTask(taskInfo)
 		return
 	}
@@ -135,7 +135,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	log.Info("Starting container with ID " + cntnr.ID[:12])
 	err = exec.client.StartContainer(cntnr.ID, nil)
 	if err != nil {
-		log.Errorf("Failed to start Docker container: %s", err.Error())
+		log.Errorf("Failed to start Docker container: %s", err)
 		exec.failTask(taskInfo)
 		return
 	}
@@ -157,10 +157,12 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 // getMasterHostname talks to the local worker endpoint and discovers the
 // Mesos master hostname.
 func (exec *sidecarExecutor) getMasterHostname() (string, error) {
-	localEndpoint := "http://" + os.Getenv("MESOS_AGENT_ENDPOINT") + "/state"
-	if len(localEndpoint) < 8 { // Did we get anything in the env var?
+	envEndpoint := os.Getenv("MESOS_AGENT_ENDPOINT")
+
+	if len(envEndpoint) < 1 { // Did we get anything in the env var?
 		return "", fmt.Errorf("Can't get MESOS_AGENT_ENDPOINT from env! Won't provide Sidecar seeds.")
 	}
+	localEndpoint := "http://" + envEndpoint + "/state"
 
 	localStruct := struct {
 		MasterHostname string `json:"master_hostname"`
