@@ -146,10 +146,17 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	exec.watchLooper =
 		director.NewImmediateTimedLooper(director.FOREVER, config.SidecarPollInterval, make(chan error))
 
+	exec.logsQuitChan = make(chan struct{})
+
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
 	go exec.watchContainer(cntnr.ID, shouldCheckSidecar(containerConfig))
 	go exec.monitorTask(cntnr.ID[:12], taskInfo)
+
+	// If we're configured to do it, let's watch and relay logs to syslog.
+	if exec.config.RelaySyslog {
+		go exec.relayLogs(exec.logsQuitChan, cntnr.ID)
+	}
 
 	log.Info("Launched Sidecar tasks... ready for Mesos instructions")
 }

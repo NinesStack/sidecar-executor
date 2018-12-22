@@ -56,17 +56,19 @@ type Config struct {
 	ForceCpuLimit       bool          `split_words:"true" default:false`
 	ForceMemoryLimit    bool          `split_words:"true" default:false`
 	Debug               bool          `split_words:"true" default:false`
+	RelaySyslog         bool          `split_words:"true" default:false`
 }
 
 type sidecarExecutor struct {
-	driver      *executor.MesosExecutorDriver
-	client      container.DockerClient
-	fetcher     SidecarFetcher
-	watchLooper director.Looper
-	dockerAuth  *docker.AuthConfiguration
-	failCount   int
-	vault       vault.EnvVault
-	config      Config
+	driver       *executor.MesosExecutorDriver
+	client       container.DockerClient
+	fetcher      SidecarFetcher
+	watchLooper  director.Looper
+	logsQuitChan chan struct{}
+	dockerAuth   *docker.AuthConfiguration
+	failCount    int
+	vault        vault.EnvVault
+	config       Config
 }
 
 type SidecarServices struct {
@@ -404,6 +406,9 @@ func handleSignals(scExec *sidecarExecutor) {
 	log.Warnf("Received signal '%s', attempting clean shutdown", sig)
 	if scExec.watchLooper != nil {
 		scExec.watchLooper.Done(errors.New("Got " + sig.String() + " signal!"))
+	}
+	if scExec.logsQuitChan != nil {
+		close(scExec.logsQuitChan) // Signal loops to exit
 	}
 	time.Sleep(3 * time.Second) // Try to let it quit
 	os.Exit(130)                // Ctrl-C received or equivalent
