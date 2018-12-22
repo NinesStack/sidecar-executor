@@ -14,16 +14,16 @@ import (
 	"time"
 	"unsafe"
 
-	log "github.com/Sirupsen/logrus"
+	"fmt"
+	"github.com/Nitro/sidecar-executor/container"
+	"github.com/Nitro/sidecar-executor/vault"
+	"github.com/Nitro/sidecar/service"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/api/v0/executor"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
-	"github.com/Nitro/sidecar/service"
-	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/envconfig"
 	"github.com/relistan/go-director"
-	"github.com/Nitro/sidecar-executor/vault"
-	"fmt"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -384,7 +384,7 @@ func SetProcessName(name string) {
 
 	// Space pad over whole pre-existing name
 	if len(name) < len(argv0) {
-		name = name + strings.Repeat(" ", len(argv0) - len(name))
+		name = name + strings.Repeat(" ", len(argv0)-len(name))
 	}
 
 	copy(argv0, name)
@@ -462,7 +462,7 @@ func main() {
 	}
 
 	log.Info("Driver exited without error. Waiting 2 seconds to shut down executor.")
-	time.Sleep(2*time.Second)
+	time.Sleep(2 * time.Second)
 
 	log.Info("Sidecar Executor exiting")
 }

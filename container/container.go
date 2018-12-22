@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
 	"github.com/pborman/uuid"

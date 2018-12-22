@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Nitro/sidecar-executor/container"
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/api/v0/executor"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"

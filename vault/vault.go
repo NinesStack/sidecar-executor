@@ -2,7 +2,7 @@ package vault
 
 import (
 	"fmt"
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
 	"strings"
