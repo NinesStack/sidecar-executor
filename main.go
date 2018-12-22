@@ -42,21 +42,21 @@ var (
 )
 
 type Config struct {
-	KillTaskTimeout     uint          `split_words:"true" default:"5"` // Seconds
-	HttpTimeout         time.Duration `split_words:"true" default:"2s"`
-	SidecarRetryCount   int           `split_words:"true" default:"5"`
-	SidecarRetryDelay   time.Duration `split_words:"true" default:"3s"`
-	SidecarUrl          string        `split_words:"true" default:"http://localhost:7777/state.json"`
-	SidecarBackoff      time.Duration `split_words:"true" default:"1m"`
-	SidecarPollInterval time.Duration `split_words:"true" default:"30s"`
-	SidecarMaxFails     int           `split_words:"true" default:"3"`
-	SeedSidecar         bool          `split_words:"true" default:"false"`
-	DockerRepository    string        `split_words:"true" default:"https://index.docker.io/v1/"`
-	LogsSince           time.Duration `split_words:"true" default:"3m"`
-	ForceCpuLimit       bool          `split_words:"true" default:false`
-	ForceMemoryLimit    bool          `split_words:"true" default:false`
-	Debug               bool          `split_words:"true" default:false`
-	RelaySyslog         bool          `split_words:"true" default:false`
+	KillTaskTimeout     uint          `envconfig:"KILL_TASK_TIMEOUT" default:"5"` // Seconds
+	HttpTimeout         time.Duration `envconfig:"HTTP_TIMEOUT" default:"2s"`
+	SidecarRetryCount   int           `envconfig:"SIDECAR_RETRY_COUNT" default:"5"`
+	SidecarRetryDelay   time.Duration `envconfig:"SIDECAR_RETRY_DELAY" default:"3s"`
+	SidecarUrl          string        `envconfig:"SIDECAR_URL" default:"http://localhost:7777/state.json"`
+	SidecarBackoff      time.Duration `envconfig:"SIDECAR_BACKOFF" default:"1m"`
+	SidecarPollInterval time.Duration `envconfig:"SIDECAR_POLL_INTERVAL" default:"30s"`
+	SidecarMaxFails     int           `envconfig:"SIDECAR_MAX_FAILS" default:"3"`
+	SeedSidecar         bool          `envconfig:"SEED_SIDECAR" default:"false"`
+	DockerRepository    string        `envconfig:"DOCKER_REPOSITORY" default:"https://index.docker.io/v1/"`
+	LogsSince           time.Duration `envconfig:"LOGS_SINCE" default:"3m"`
+	ForceCpuLimit       bool          `envconfig:"FORCE_CPU_LIMIT" default:false`
+	ForceMemoryLimit    bool          `envconfig:"FORCE_MEMORY_LIMIT" default:false`
+	Debug               bool          `envconfig:"DEBUG" default:false`
+	RelaySyslog         bool          `envconfig:"RELAY_SYSLOG" default:false`
 }
 
 type sidecarExecutor struct {
@@ -106,6 +106,7 @@ func logConfig() {
 	log.Infof(" * LogsSince:           %s", config.LogsSince.String())
 	log.Infof(" * ForceCpuLimit:       %t", config.ForceCpuLimit)
 	log.Infof(" * ForceMemoryLimit:    %t", config.ForceMemoryLimit)
+	log.Infof(" * RelaySyslog:         %t", config.RelaySyslog)
 	log.Infof(" * Debug:               %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")
