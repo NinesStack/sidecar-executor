@@ -114,6 +114,10 @@ the Docker container. Currently the settings available are:
 	ForceCpuLimit:       false
 	ForceMemoryLimit:    false
 	Debug:               false
+	RelaySyslog          false
+	SyslogAddr           127.0.0.1:514
+	ContainerLogsStdout  false
+	SendDockerLabels     []
 ```
 
 All of the environment variables are of the form `EXECUTOR_SIDECAR_RETRY_DELAY`
@@ -172,6 +176,24 @@ with `EXECUTOR_`.
    cgroups (via Docker)?
 
  * **Debug**: Should we turn on debug logging (verbose!) for this executor?
+
+ * **RelaySyslog**: Should we relay container logs to syslog? This is a bare UDP
+   implementation suitable for loggers that don't care about syslog protocol.
+   Logs will be sent in JSON format, using Logrus.
+
+ * **SyslogAddr**: If `RelaySyslog` is true, we'll use this as the remote address
+   for syslog logging.
+
+ * **ContainerLogsStdout**: Should we copy the container logs to stdout? The
+   effect of doing this is that container logs (both stdout and stderr) will end
+   up in the Mesos sandbox logs. Be careful here since the Mesos logs are *not*
+   rotated by the Mesos worker. Requires that `RelaySyslog` be true. Note that
+   if you don't want syslog but you do want this option, there is not *much* harm
+   in turning on `RelaySyslog` since the UDP packets will just drop.
+
+ * **SendDockerLabels**: If `RelaySyslog` is true, should we augment JSON logs
+   with some fields defined in Docker labels? This is a comma-separated list
+   of labels. They will be sent with the field name being the Docker label name.
 
 Configuring Docker Connectivity
 -------------------------------
