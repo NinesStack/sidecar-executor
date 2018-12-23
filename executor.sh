@@ -4,6 +4,8 @@
 # allows for easy upgrading of the executor for new tasks without affecting those
 # that are already running on the old version
 
+echo "--> Executor wrapper starting up..."
+
 if [[ -z $SIDECAR_EXECUTOR_PATH ]]; then
 	SIDECAR_EXECUTOR_PATH=/opt/mesos/sidecar-executor
 fi
@@ -20,7 +22,6 @@ else
 	echo "--> No custom environment found at $SIDECAR_EXECUTOR_CUSTOM_ENV_PATH"
 fi
 
-echo "--> Executor wrapper starting up..."
 echo "--> Copying ${SIDECAR_EXECUTOR_PATH} to sandbox ${MESOS_SANDBOX}"
 executor="${MESOS_SANDBOX}/`basename ${SIDECAR_EXECUTOR_PATH}`"
 cp $SIDECAR_EXECUTOR_PATH $executor
