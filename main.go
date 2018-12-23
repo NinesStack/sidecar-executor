@@ -58,6 +58,7 @@ type Config struct {
 	Debug               bool          `envconfig:"DEBUG" default:false`
 	RelaySyslog         bool          `envconfig:"RELAY_SYSLOG" default:false`
 	SyslogAddr          string        `envconfig:"SYSLOG_ADDR" default:"127.0.0.1:514"`
+	ContainerLogsStdout bool          `envconfig:"CONTAINER_LOGS_STDOUT" default:"false"`
 }
 
 type sidecarExecutor struct {
