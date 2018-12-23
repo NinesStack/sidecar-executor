@@ -57,6 +57,7 @@ type Config struct {
 	ForceMemoryLimit    bool          `envconfig:"FORCE_MEMORY_LIMIT" default:false`
 	Debug               bool          `envconfig:"DEBUG" default:false`
 	RelaySyslog         bool          `envconfig:"RELAY_SYSLOG" default:false`
+	SyslogAddr          string        `envconfig:"SYSLOG_ADDR" default:"127.0.0.1:514"`
 }
 
 type sidecarExecutor struct {
@@ -107,6 +108,7 @@ func logConfig() {
 	log.Infof(" * ForceCpuLimit:       %t", config.ForceCpuLimit)
 	log.Infof(" * ForceMemoryLimit:    %t", config.ForceMemoryLimit)
 	log.Infof(" * RelaySyslog:         %t", config.RelaySyslog)
+	log.Infof(" * SyslogAddr:          %s", config.SyslogAddr)
 	log.Infof(" * Debug:               %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")

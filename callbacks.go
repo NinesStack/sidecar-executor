@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/Nitro/sidecar-executor/container"
-	log "github.com/sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/api/v0/executor"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
 	"github.com/relistan/go-director"
+	log "github.com/sirupsen/logrus"
 )
 
 // Callbacks from the Mesos driver. These are required to implement
@@ -155,7 +155,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// If we're configured to do it, let's watch and relay logs to syslog.
 	if exec.config.RelaySyslog {
-		go exec.relayLogs(exec.logsQuitChan, cntnr.ID)
+		go exec.relayLogs(exec.logsQuitChan, cntnr.ID, os.Stdout)
 	}
 
 	log.Info("Launched Sidecar tasks... ready for Mesos instructions")

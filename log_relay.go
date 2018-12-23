@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"io"
 	"log/syslog"
-	"os"
 
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/sirupsen/logrus"
@@ -13,60 +12,71 @@ import (
 )
 
 func (exec *sidecarExecutor) configureLogRelay(containerId string, output io.Writer) *logrus.Entry {
-	log := logrus.New()
-	hook, err := lSyslog.NewSyslogHook("udp", "localhost:1514", syslog.LOG_INFO, "")
+	syslogger := log.New()
+	// We relay UDP syslog because we don't plan to ship it off the box
+	// and because it's simplest since there is no backpressure issue to
+	// deal with.
+	hook, err := lSyslog.NewSyslogHook("udp", exec.config.SyslogAddr, syslog.LOG_INFO, "")
 
 	if err != nil {
 		log.Fatalf("Error adding hook: %s", err)
 	}
 
-	log.Hooks.Add(hook)
-	log.SetFormatter(&logrus.JSONFormatter{
+	syslogger.Hooks.Add(hook)
+	syslogger.SetFormatter(&logrus.JSONFormatter{
 		FieldMap: logrus.FieldMap{
-			logrus.FieldKeyTime:  "Timestamp",
-			logrus.FieldKeyLevel: "Level",
-			logrus.FieldKeyMsg:   "Payload",
-			logrus.FieldKeyFunc:  "Func",
+			log.FieldKeyTime:  "Timestamp",
+			log.FieldKeyLevel: "Level",
+			log.FieldKeyMsg:   "Payload",
+			log.FieldKeyFunc:  "Func",
 		},
 	})
-	log.SetOutput(output)
+	syslogger.SetOutput(output)
 
-	return log.WithFields(logrus.Fields{
+	return syslogger.WithFields(log.Fields{
 		"ServiceName": "foo-service",
 		"Environment": "prod",
 	})
 }
 
 // relayLogs will watch a container and send the logs to Syslog
-func (exec *sidecarExecutor) relayLogs(quitChan chan struct{}, containerId string) {
-	logger := exec.configureLogRelay(containerId, os.Stdout)
+func (exec *sidecarExecutor) relayLogs(quitChan chan struct{},
+	containerId string, output io.Writer) {
 
-	logger.Info("sidecar-executor starting log pump for '%s'", containerId[:12])
+	logger := exec.configureLogRelay(containerId, output)
+
+	logger.Infof("sidecar-executor starting log pump for '%s'", containerId[:12])
+	log.Info("Started syslog log pump") // Send to local log output
 
 	outrd, outwr := io.Pipe()
 	errrd, errwr := io.Pipe()
 
 	// Tell Docker client to start pumping logs into our pipes
-	container.GetLogs(exec.client, containerId, 0, outwr, errwr)
+	container.FollowLogs(exec.client, containerId, 0, outwr, errwr)
 
 	go exec.handleOneStream(quitChan, "stdout", logger, outrd)
 	go exec.handleOneStream(quitChan, "stderr", logger, errrd)
+
+	<-quitChan
 }
 
 // handleOneStream will process one data stream into logs
 func (exec *sidecarExecutor) handleOneStream(quitChan chan struct{}, name string,
-	logger *logrus.Entry, in io.Reader) {
+	logger *log.Entry, in io.Reader) {
 
 	scanner := bufio.NewScanner(in) // Defaults to splitting as lines
 
 	for scanner.Scan() {
+		text := scanner.Text()
+		log.Debugf("docker: %s", text)
+
 		switch name {
 		case "stdout":
-			logger.Info(scanner.Text()) // Send to syslog "info"
+			logger.Info(text) // Send to syslog "info"
 		case "stderr":
-			logger.Error(scanner.Text()) // Send to syslog "error"
+			logger.Error(text) // Send to syslog "error"
 		default:
-			log.Error("handleOneStream(): Unknown stream type '%s'. Exiting log pump.", name)
+			log.Errorf("handleOneStream(): Unknown stream type '%s'. Exiting log pump.", name)
 			return
 		}
 
@@ -80,4 +90,6 @@ func (exec *sidecarExecutor) handleOneStream(quitChan chan struct{}, name string
 	if err := scanner.Err(); err != nil {
 		log.Errorf("handleOneStream() error reading Docker log input: '%s'. Exiting log pump '%s'.", err, name)
 	}
+
+	log.Warnf("Log pump exited for '%s'", name)
 }
