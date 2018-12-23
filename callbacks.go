@@ -64,8 +64,10 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 		addEnvVars,
 	)
 
+	dockerLabels := container.LabelsForTask(taskInfo)
+
 	// Log out what we're starting up with
-	exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), addEnvVars)
+	exec.logTaskEnv(taskInfo, dockerLabels, addEnvVars)
 
 	// Try to decrypt any existing Vault encoded env.
 	decryptedEnv, err := exec.vault.DecryptAllEnv(containerConfig.Config.Env)
@@ -105,7 +107,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	go exec.monitorTask(cntnr.ID[:12], taskInfo)
 
 	// We may be responsible for log relaying. Handle, if we are.
-	exec.handleContainerLogs(cntnr.ID)
+	exec.handleContainerLogs(cntnr.ID, dockerLabels)
 
 	log.Info("Launched Sidecar tasks... ready for Mesos instructions")
 }

@@ -56,9 +56,12 @@ type Config struct {
 	ForceCpuLimit       bool          `envconfig:"FORCE_CPU_LIMIT" default:false`
 	ForceMemoryLimit    bool          `envconfig:"FORCE_MEMORY_LIMIT" default:false`
 	Debug               bool          `envconfig:"DEBUG" default:false`
+
+	// Syslogging options
 	RelaySyslog         bool          `envconfig:"RELAY_SYSLOG" default:false`
 	SyslogAddr          string        `envconfig:"SYSLOG_ADDR" default:"127.0.0.1:514"`
 	ContainerLogsStdout bool          `envconfig:"CONTAINER_LOGS_STDOUT" default:"false"`
+	SendDockerLabels    []string      `envconfig:"SEND_DOCKER_LABELS" default:""`
 }
 
 type sidecarExecutor struct {
@@ -110,6 +113,8 @@ func logConfig() {
 	log.Infof(" * ForceMemoryLimit:    %t", config.ForceMemoryLimit)
 	log.Infof(" * RelaySyslog:         %t", config.RelaySyslog)
 	log.Infof(" * SyslogAddr:          %s", config.SyslogAddr)
+	log.Infof(" * ContainerLogsStdout: %t", config.ContainerLogsStdout)
+	log.Infof(" * SendDockerLabels:    %v", config.SendDockerLabels)
 	log.Infof(" * Debug:               %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")

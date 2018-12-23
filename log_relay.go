@@ -3,21 +3,21 @@ package main
 import (
 	"bufio"
 	"io"
-	"log/syslog"
 
 	"github.com/Nitro/sidecar-executor/container"
+	"github.com/Nitro/sidecar-executor/loghooks"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
-	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 )
 
-func (exec *sidecarExecutor) configureLogRelay(containerId string, output io.Writer) *logrus.Entry {
+func (exec *sidecarExecutor) configureLogRelay(containerId string,
+	labels map[string]string, output io.Writer) *logrus.Entry {
+
 	syslogger := log.New()
 	// We relay UDP syslog because we don't plan to ship it off the box
 	// and because it's simplest since there is no backpressure issue to
 	// deal with.
-	hook, err := lSyslog.NewSyslogHook("udp", exec.config.SyslogAddr, syslog.LOG_INFO, "")
-
+	hook, err := loghooks.NewUDPHook(exec.config.SyslogAddr)
 	if err != nil {
 		log.Fatalf("Error adding hook: %s", err)
 	}
@@ -33,17 +33,23 @@ func (exec *sidecarExecutor) configureLogRelay(containerId string, output io.Wri
 	})
 	syslogger.SetOutput(output)
 
-	return syslogger.WithFields(log.Fields{
-		"ServiceName": "foo-service",
-		"Environment": "prod",
-	})
+	// Loop through the fields we're supposed to pass, and add them from the
+	// Docker labels on this container
+	fields := make(log.Fields, len(exec.config.SendDockerLabels))
+	for _, field := range exec.config.SendDockerLabels {
+		if val, ok := labels[field]; ok {
+			fields[field] = val
+		}
+	}
+
+	return syslogger.WithFields(fields)
 }
 
 // relayLogs will watch a container and send the logs to Syslog
 func (exec *sidecarExecutor) relayLogs(quitChan chan struct{},
-	containerId string, output io.Writer) {
+	containerId string, labels map[string]string, output io.Writer) {
 
-	logger := exec.configureLogRelay(containerId, output)
+	logger := exec.configureLogRelay(containerId, labels, output)
 
 	logger.Infof("sidecar-executor starting log pump for '%s'", containerId[:12])
 	log.Info("Started syslog log pump") // Send to local log output

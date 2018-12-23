@@ -20,6 +20,7 @@ func Test_relayLogs(t *testing.T) {
 			LogErrorString:  "this is some stderr text\n",
 		}
 		exec := newSidecarExecutor(dockerClient, &docker.AuthConfiguration{})
+		exec.config.SendDockerLabels = []string{"Environment", "ServiceName"}
 
 		// Stub out the fetcher
 		fetcher := &mockFetcher{}
@@ -28,17 +29,36 @@ func Test_relayLogs(t *testing.T) {
 		// Capture logging output
 		var result bytes.Buffer
 
+		quitChan := make(chan struct{})
+
 		Convey("handles both stderr and stdout", func() {
-			quitChan := make(chan struct{})
 			// Janky that we have to sleep here, but not a good way to
 			// sync on this.
 			go func() { time.Sleep(1 * time.Millisecond); close(quitChan) }()
 
-			exec.relayLogs(quitChan, "deadbeef123123123", &result)
+			exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, &result)
 
 			resultStr := string(result.Bytes())
 			So(resultStr, ShouldContainSubstring, "some stdout text")
 			So(resultStr, ShouldContainSubstring, "some stderr text")
+		})
+
+		Convey("includes the requested Docker labels", func() {
+			// Janky that we have to sleep here, but not a good way to
+			// sync on this.
+			go func() { time.Sleep(1 * time.Millisecond); close(quitChan) }()
+
+			labels := map[string]string{
+				"Environment": "prod",
+				"ServiceName": "beowulf",
+			}
+
+			exec.relayLogs(quitChan, "deadbeef123123123", labels, &result)
+			exec.config.ContainerLogsStdout = true
+
+			resultStr := string(result.Bytes())
+			So(resultStr, ShouldContainSubstring, `"Environment":"prod"`)
+			So(resultStr, ShouldContainSubstring, `"ServiceName":"beowulf"`)
 		})
 	})
 }

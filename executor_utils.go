@@ -59,7 +59,9 @@ func (exec *sidecarExecutor) copyLogs(containerId string) {
 
 // handlContainerLogs will, if configured to do it, watch and relay container
 // logs to syslog.
-func (exec *sidecarExecutor) handleContainerLogs(containerId string) {
+func (exec *sidecarExecutor) handleContainerLogs(containerId string,
+	labels map[string]string) {
+
 	if exec.config.RelaySyslog {
 		var output io.Writer
 		if exec.config.ContainerLogsStdout {
@@ -69,7 +71,7 @@ func (exec *sidecarExecutor) handleContainerLogs(containerId string) {
 		}
 
 		exec.logsQuitChan = make(chan struct{})
-		go exec.relayLogs(exec.logsQuitChan, containerId, output)
+		go exec.relayLogs(exec.logsQuitChan, containerId, labels, output)
 	}
 }
 
