@@ -189,7 +189,9 @@ with `EXECUTOR_`.
    up in the Mesos sandbox logs. Be careful here since the Mesos logs are *not*
    rotated by the Mesos worker. Requires that `RelaySyslog` be true. Note that
    if you don't want syslog but you do want this option, there is not *much* harm
-   in turning on `RelaySyslog` since the UDP packets will just drop.
+   in turning on `RelaySyslog` since the UDP packets will just drop. **Note**:
+   This only works with Docker log drivers `json-file` and `journald` because it
+   uses the native Docker logging functionality to collect the logs.
 
  * **SendDockerLabels**: If `RelaySyslog` is true, should we augment JSON logs
    with some fields defined in Docker labels? This is a comma-separated list
