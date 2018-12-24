@@ -2,7 +2,7 @@ package vault
 
 import (
 	"fmt"
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
 	"strings"
@@ -30,7 +30,7 @@ func NewDefaultVault() EnvVault {
 	conf := api.DefaultConfig()
 	err := conf.ReadEnvironment()
 	if err != nil {
-		log.Warn("Unable to load Environment vars: %s", err.Error())
+		log.Warnf("Unable to load Environment vars: %s", err)
 	}
 	log.Infof("Vault address '%s' ", conf.Address)
 	vaultClient, _ := api.NewClient(conf)
@@ -72,7 +72,7 @@ func (v EnvVault) ReadSecretValue(vaultPath string) (string, error) {
 	secret, err := v.read(path)
 
 	if err != nil {
-		return "", errors.Errorf("Unable to fetch '%s' [VAULT_ADDR:%s] error: %s", path, v.client.Address(), err.Error())
+		return "", errors.Errorf("Unable to fetch '%s' [VAULT_ADDR:%s] error: %s", path, v.client.Address(), err)
 	}
 
 	if secret == nil {

@@ -14,16 +14,16 @@ import (
 	"time"
 	"unsafe"
 
-	log "github.com/Sirupsen/logrus"
+	"fmt"
+	"github.com/Nitro/sidecar-executor/container"
+	"github.com/Nitro/sidecar-executor/vault"
+	"github.com/Nitro/sidecar/service"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/api/v0/executor"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
-	"github.com/Nitro/sidecar/service"
-	"github.com/Nitro/sidecar-executor/container"
 	"github.com/relistan/envconfig"
 	"github.com/relistan/go-director"
-	"github.com/Nitro/sidecar-executor/vault"
-	"fmt"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -42,31 +42,38 @@ var (
 )
 
 type Config struct {
-	KillTaskTimeout     uint          `split_words:"true" default:"5"` // Seconds
-	HttpTimeout         time.Duration `split_words:"true" default:"2s"`
-	SidecarRetryCount   int           `split_words:"true" default:"5"`
-	SidecarRetryDelay   time.Duration `split_words:"true" default:"3s"`
-	SidecarUrl          string        `split_words:"true" default:"http://localhost:7777/state.json"`
-	SidecarBackoff      time.Duration `split_words:"true" default:"1m"`
-	SidecarPollInterval time.Duration `split_words:"true" default:"30s"`
-	SidecarMaxFails     int           `split_words:"true" default:"3"`
-	SeedSidecar         bool          `split_words:"true" default:"false"`
-	DockerRepository    string        `split_words:"true" default:"https://index.docker.io/v1/"`
-	LogsSince           time.Duration `split_words:"true" default:"3m"`
-	ForceCpuLimit       bool          `split_words:"true" default:false`
-	ForceMemoryLimit    bool          `split_words:"true" default:false`
-	Debug               bool          `split_words:"true" default:false`
+	KillTaskTimeout     uint          `envconfig:"KILL_TASK_TIMEOUT" default:"5"` // Seconds
+	HttpTimeout         time.Duration `envconfig:"HTTP_TIMEOUT" default:"2s"`
+	SidecarRetryCount   int           `envconfig:"SIDECAR_RETRY_COUNT" default:"5"`
+	SidecarRetryDelay   time.Duration `envconfig:"SIDECAR_RETRY_DELAY" default:"3s"`
+	SidecarUrl          string        `envconfig:"SIDECAR_URL" default:"http://localhost:7777/state.json"`
+	SidecarBackoff      time.Duration `envconfig:"SIDECAR_BACKOFF" default:"1m"`
+	SidecarPollInterval time.Duration `envconfig:"SIDECAR_POLL_INTERVAL" default:"30s"`
+	SidecarMaxFails     int           `envconfig:"SIDECAR_MAX_FAILS" default:"3"`
+	SeedSidecar         bool          `envconfig:"SEED_SIDECAR" default:"false"`
+	DockerRepository    string        `envconfig:"DOCKER_REPOSITORY" default:"https://index.docker.io/v1/"`
+	LogsSince           time.Duration `envconfig:"LOGS_SINCE" default:"3m"`
+	ForceCpuLimit       bool          `envconfig:"FORCE_CPU_LIMIT" default:false`
+	ForceMemoryLimit    bool          `envconfig:"FORCE_MEMORY_LIMIT" default:false`
+	Debug               bool          `envconfig:"DEBUG" default:false`
+
+	// Syslogging options
+	RelaySyslog         bool          `envconfig:"RELAY_SYSLOG" default:false`
+	SyslogAddr          string        `envconfig:"SYSLOG_ADDR" default:"127.0.0.1:514"`
+	ContainerLogsStdout bool          `envconfig:"CONTAINER_LOGS_STDOUT" default:"false"`
+	SendDockerLabels    []string      `envconfig:"SEND_DOCKER_LABELS" default:""`
 }
 
 type sidecarExecutor struct {
-	driver      *executor.MesosExecutorDriver
-	client      container.DockerClient
-	fetcher     SidecarFetcher
-	watchLooper director.Looper
-	dockerAuth  *docker.AuthConfiguration
-	failCount   int
-	vault       vault.EnvVault
-	config      Config
+	driver       *executor.MesosExecutorDriver
+	client       container.DockerClient
+	fetcher      SidecarFetcher
+	watchLooper  director.Looper
+	logsQuitChan chan struct{}
+	dockerAuth   *docker.AuthConfiguration
+	failCount    int
+	vault        vault.EnvVault
+	config       Config
 }
 
 type SidecarServices struct {
@@ -104,6 +111,10 @@ func logConfig() {
 	log.Infof(" * LogsSince:           %s", config.LogsSince.String())
 	log.Infof(" * ForceCpuLimit:       %t", config.ForceCpuLimit)
 	log.Infof(" * ForceMemoryLimit:    %t", config.ForceMemoryLimit)
+	log.Infof(" * RelaySyslog:         %t", config.RelaySyslog)
+	log.Infof(" * SyslogAddr:          %s", config.SyslogAddr)
+	log.Infof(" * ContainerLogsStdout: %t", config.ContainerLogsStdout)
+	log.Infof(" * SendDockerLabels:    %v", config.SendDockerLabels)
 	log.Infof(" * Debug:               %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")
@@ -384,7 +395,7 @@ func SetProcessName(name string) {
 
 	// Space pad over whole pre-existing name
 	if len(name) < len(argv0) {
-		name = name + strings.Repeat(" ", len(argv0) - len(name))
+		name = name + strings.Repeat(" ", len(argv0)-len(name))
 	}
 
 	copy(argv0, name)
@@ -404,6 +415,9 @@ func handleSignals(scExec *sidecarExecutor) {
 	log.Warnf("Received signal '%s', attempting clean shutdown", sig)
 	if scExec.watchLooper != nil {
 		scExec.watchLooper.Done(errors.New("Got " + sig.String() + " signal!"))
+	}
+	if scExec.logsQuitChan != nil {
+		close(scExec.logsQuitChan) // Signal loops to exit
 	}
 	time.Sleep(3 * time.Second) // Try to let it quit
 	os.Exit(130)                // Ctrl-C received or equivalent
@@ -462,7 +476,7 @@ func main() {
 	}
 
 	log.Info("Driver exited without error. Waiting 2 seconds to shut down executor.")
-	time.Sleep(2*time.Second)
+	time.Sleep(2 * time.Second)
 
 	log.Info("Sidecar Executor exiting")
 }

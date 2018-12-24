@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
 	"github.com/pborman/uuid"
@@ -81,7 +81,7 @@ func StopContainer(client DockerClient, containerId string, timeout uint) error 
 	return nil
 }
 
-// Pull the Docker image refered to in the taskInfo. Uses the Docker
+// PullImage will pull the Docker image refered to in the taskInfo. Uses the Docker
 // credentials passed in.
 func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker.AuthConfiguration) error {
 	log.Infof("Pulling Docker image '%s'", *taskInfo.Container.Docker.Image)
@@ -100,7 +100,7 @@ func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker
 	return nil
 }
 
-// Fetch the Docker logs from a task and return two Readers that let
+// GetLogs will fetch the Docker logs from a task and return two Readers that let
 // us fetch the contents.
 func GetLogs(client DockerClient, containerId string, since int64, stdout io.Writer, stderr io.Writer) {
 	go func() {
@@ -111,6 +111,26 @@ func GetLogs(client DockerClient, containerId string, since int64, stdout io.Wri
 			Since:        since,
 			Stdout:       true,
 			Stderr:       true,
+		})
+
+		if err != nil {
+			log.Errorf("Failed to fetch logs for task: %s", err.Error())
+		}
+	}()
+}
+
+// FollowLogs will fetch the Docker logs since "since", and start pumping logs into
+// the two writers that are passed in.
+func FollowLogs(client DockerClient, containerId string, since int64, stdout io.Writer, stderr io.Writer) {
+	go func() {
+		err := client.Logs(docker.LogsOptions{
+			Container:    containerId,
+			OutputStream: stdout,
+			ErrorStream:  stderr,
+			Since:        since,
+			Stdout:       true,
+			Stderr:       true,
+			Follow:       true,
 		})
 
 		if err != nil {
