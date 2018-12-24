@@ -57,7 +57,7 @@ func (exec *sidecarExecutor) copyLogs(containerId string) {
 	)
 }
 
-// handlContainerLogs will, if configured to do it, watch and relay container
+// handleContainerLogs will, if configured to do it, watch and relay container
 // logs to syslog.
 func (exec *sidecarExecutor) handleContainerLogs(containerId string,
 	labels map[string]string) {
