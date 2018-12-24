@@ -144,7 +144,9 @@ func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *me
 	}
 
 	// Copy the failure logs (hopefully) to stdout/stderr so we can get them
-	exec.copyLogs(containerName)
+	if !exec.config.ContainerLogsStdout {
+		exec.copyLogs(containerName)
+	}
 	// Notify Mesos
 	exec.sendStatus(status, taskID)
 
