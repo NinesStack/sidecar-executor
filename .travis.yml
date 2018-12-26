@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.8.x
+  - 1.11.x
 
 script:
   - go test -v ./... && (CGO_ENABLED=0 GOOS=linux go build -ldflags '-d')
