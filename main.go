@@ -58,10 +58,10 @@ type Config struct {
 	Debug               bool          `envconfig:"DEBUG" default:false`
 
 	// Syslogging options
-	RelaySyslog         bool          `envconfig:"RELAY_SYSLOG" default:false`
-	SyslogAddr          string        `envconfig:"SYSLOG_ADDR" default:"127.0.0.1:514"`
-	ContainerLogsStdout bool          `envconfig:"CONTAINER_LOGS_STDOUT" default:"false"`
-	SendDockerLabels    []string      `envconfig:"SEND_DOCKER_LABELS" default:""`
+	RelaySyslog         bool     `envconfig:"RELAY_SYSLOG" default:false`
+	SyslogAddr          string   `envconfig:"SYSLOG_ADDR" default:"127.0.0.1:514"`
+	ContainerLogsStdout bool     `envconfig:"CONTAINER_LOGS_STDOUT" default:"false"`
+	SendDockerLabels    []string `envconfig:"SEND_DOCKER_LABELS" default:""`
 }
 
 type sidecarExecutor struct {
@@ -119,6 +119,10 @@ func logConfig() {
 
 	log.Infof("Environment ---------------------------")
 	for _, setting := range os.Environ() {
+		if setting == "VAULT_TOKEN" {
+			continue
+		}
+
 		if (len(setting) >= 5 && setting[:5] == "MESOS") ||
 			((len(setting) >= 8) && setting[:8] == "EXECUTOR") ||
 			((len(setting) >= 5) && setting[:5] == "VAULT") ||
