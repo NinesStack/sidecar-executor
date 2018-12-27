@@ -6,12 +6,11 @@ import (
 
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/Nitro/sidecar-executor/loghooks"
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
 func (exec *sidecarExecutor) configureLogRelay(containerId string,
-	labels map[string]string, output io.Writer) *logrus.Entry {
+	labels map[string]string, output io.Writer) *log.Entry {
 
 	syslogger := log.New()
 	// We relay UDP syslog because we don't plan to ship it off the box
@@ -23,8 +22,8 @@ func (exec *sidecarExecutor) configureLogRelay(containerId string,
 	}
 
 	syslogger.Hooks.Add(hook)
-	syslogger.SetFormatter(&logrus.JSONFormatter{
-		FieldMap: logrus.FieldMap{
+	syslogger.SetFormatter(&log.JSONFormatter{
+		FieldMap: log.FieldMap{
 			log.FieldKeyTime:  "Timestamp",
 			log.FieldKeyLevel: "Level",
 			log.FieldKeyMsg:   "Payload",
