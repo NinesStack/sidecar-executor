@@ -10,7 +10,7 @@ deploy:
   provider: releases
 
   api_key:
-    secure: $GITHUB_TOKEN
+    secure: mt11eTq/HDdlkFxPNofdaer0cRPPk/jNbp7nt8PEMba1JDYB9qqA0pwTNnyVUT1KPNA8ugrNLtmYyLDl37Sdi7m6y2E+52PAFy0DimudEq0VlEhJYJe2l4OmDughhE08FwwoSyBw0kv6F/Y0nPgTDOrP8/M8usBxjb+gItRLmBx+En47FrJpkXH2FMsCuqVpYNGezeHI7X/ftHnZa348F1prEI4W5ERs8tRzu5jkS3to80kG0SAm1k8uMTQJOT+LWKwDJ5JPNE9cx+mvkMDX9ziMnhAv6CxIo1GfVmgASnLWGL1TO8Y32yHoiFwev51W96cpzyThjUdZYxgM+PufvReTRxfvSKkHFyv0U16TvwnRk2I8z7SBYuwkvBaMzYCgKcOyr1VIImZE0BebCZLs3/4JXUyBbqpsaS3km4yvY5UkQt0fEepImNMNgONTPWKDKwq9MsS9xfBK/+DTtzblAJ103ZrmbzrVgakQZAQ/eO2y8OTl7xvNs//Ks++Wgv/tu4neSMsAlwh9D5rmwkweW2w0dHQ1AF/fvgmhs/kcsejruttUoc5uPZA6egErkdtT69WtHO9Jq0ati4ZGh+pCrjIS5p5UnjfONpRuRs8ZBd3TwjUomHg+pyZiPTdDksp7moTN0nE6gF98EmZOXaE93VH8uCYKK9xQSWzTmaObf+U=
 
   file:
     - sidecar-executor
@@ -19,5 +19,6 @@ deploy:
   skip_cleanup: true
 
   on:
+    repo: Nitro/sidecar-executor
     tags: true
     condition: ${TRAVIS_GO_VERSION::3} == ${PRODUCTION_GO_VERSION}
