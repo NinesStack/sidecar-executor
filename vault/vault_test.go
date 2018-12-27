@@ -57,19 +57,21 @@ func Test_DecryptEnvs(t *testing.T) {
 
 		})
 
+		Convey("ReadSecretValue returns a secured value for a valid sub-key", func() {
+			securedValue, err := envVault.ReadSecretValue("vault://secure/validKeyWithSub?key=subkey")
+			So(err, ShouldBeNil)
+			So(securedValue, ShouldEqual, "some_sub_value")
+		})
+
 		Convey("Process all environment vars with Vault path", func() {
 			envs := []string{"Key1=Value1", "Key2=Value2", "Key3=vault://secure/validKey"}
 			expected := []string{"Key1=Value1", "Key2=Value2", "Key3=secret_value"}
 			securedValue, err := envVault.DecryptAllEnv(envs)
 			So(err, ShouldBeNil)
 			So(securedValue, ShouldResemble, expected)
-
 		})
-
 	})
-
 }
-
 
 type mockVaultAPI struct {
 	VaultAPI
@@ -94,11 +96,20 @@ func (m mockVaultAPI) RawRequest(r *api.Request) (*api.Response, error) {
 		}, nil
 	}
 
+	if strings.Contains(r.URL.Path, "secure/validKeyWithSub") {
+		return &api.Response{
+			Response: &http.Response{
+				StatusCode: 200,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(`{ "data":{ "subkey": "some_sub_value" }}`))),
+			},
+		}, nil
+	}
+
 	if strings.Contains(r.URL.Path, "secure/validKey") {
 		return &api.Response{
 			Response: &http.Response{
 				StatusCode: 200,
-				Body: ioutil.NopCloser(bytes.NewReader([]byte(`{ "data":{ "value": "secret_value" }}`))),
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(`{ "data":{ "value": "secret_value" }}`))),
 			},
 		}, nil
 	}

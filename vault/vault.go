@@ -2,13 +2,15 @@ package vault
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	"net/url"
+	"strings"
+
 	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
-	"strings"
+	log "github.com/sirupsen/logrus"
 )
 
-const VaultPathPrefix = "vault://"
+const VaultURLScheme = "vault"
 
 // Client to replace vault paths by the secret valued stored in the Hashicorp Vault
 type EnvVault struct {
@@ -37,11 +39,19 @@ func NewDefaultVault() EnvVault {
 	return EnvVault{client: vaultClient}
 }
 
-// DecryptAllEnv decrypts all envs that contains a Vault path.
-// All values staring with `vault://` are overridden by the secret valued stored in the path.
-// For instances:
-//  Input: ["db_url=url","db_pass=vault://secret/db_pass"]
-// Output: ["db_url=url","db_pass=ACTUAL_SECRET_PASS"]
+// DecryptAllEnv decrypts all env vars that contain a Vault path.  All values
+// staring with `vault://` are overridden by the secret valued stored in the
+// path. For instance:
+//    Input: ["db_url=url","db_pass=vault://secret/db_pass"]
+//   Output: ["db_url=url","db_pass=ACTUAL_SECRET_PASS"]
+//
+//
+// By default, the key used to retrieve the contents of the Secret that Vault
+// returns is the string "value". If you have more than one entry stored in a
+// Secret and need to refer to them by name, you may append a query string
+// specifying the key, such as:
+//    vault://secret/prod-database?key=username
+//
 func (v EnvVault) DecryptAllEnv(envs []string) ([]string, error) {
 	var decryptedEnv []string
 	for _, env := range envs {
@@ -64,11 +74,17 @@ func (v EnvVault) DecryptAllEnv(envs []string) ([]string, error) {
 }
 
 // ReadSecretValue returns the secret value of a Vault path.
-func (v EnvVault) ReadSecretValue(vaultPath string) (string, error) {
-	if !strings.HasPrefix(vaultPath, VaultPathPrefix) {
-		return "", errors.Errorf("Invalid Vault path '%s', expecting prefix '%s'", vaultPath, VaultPathPrefix)
+func (v EnvVault) ReadSecretValue(vaultURL string) (string, error) {
+	parsed, err := url.Parse(vaultURL)
+	if err != nil {
+		return "", errors.Errorf("Unable to parse Vault URL: '%s'", vaultURL)
 	}
-	path := strings.TrimPrefix(vaultPath, VaultPathPrefix)
+
+	if parsed.Scheme != VaultURLScheme {
+		return "", errors.Errorf("Invalid Vault URL '%s', expecting scheme '%s://'", vaultURL, VaultURLScheme)
+	}
+
+	path := parsed.Host + parsed.Path
 	secret, err := v.read(path)
 
 	if err != nil {
@@ -79,7 +95,13 @@ func (v EnvVault) ReadSecretValue(vaultPath string) (string, error) {
 		return "", errors.Errorf("Path '%s' not found [VAULT_ADDR:%s]", path, v.client.Address())
 	}
 
-	value, ok := secret.Data["value"].(string)
+	q := parsed.Query()
+	key := q["key"]
+	if key == nil {
+		key = []string{"value"}
+	}
+
+	value, ok := secret.Data[key[0]].(string)
 
 	if !ok {
 		return "", errors.Errorf("Value for path '%s' not found [VAULT_ADDR:%s]", path, v.client.Address())
@@ -89,7 +111,7 @@ func (v EnvVault) ReadSecretValue(vaultPath string) (string, error) {
 }
 
 func isVaultPath(value string) bool {
-	hasPrefix := strings.HasPrefix(value, VaultPathPrefix)
+	hasPrefix := strings.HasPrefix(value, VaultURLScheme+"://")
 	return hasPrefix
 }
 
