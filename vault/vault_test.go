@@ -63,6 +63,12 @@ func Test_DecryptEnvs(t *testing.T) {
 			So(securedValue, ShouldEqual, "some_sub_value")
 		})
 
+		Convey("ReadSecretValue returns an error on a missing sub-key", func() {
+			securedValue, err := envVault.ReadSecretValue("vault://secure/validKeyWithSub?key=missing")
+			So(err.Error(), ShouldContainSubstring, "Value for path 'secure/validKeyWithSub' not found")
+			So(securedValue, ShouldEqual, "")
+		})
+
 		Convey("Process all environment vars with Vault path", func() {
 			envs := []string{"Key1=Value1", "Key2=Value2", "Key3=vault://secure/validKey"}
 			expected := []string{"Key1=Value1", "Key2=Value2", "Key3=secret_value"}
