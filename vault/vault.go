@@ -12,7 +12,7 @@ import (
 
 const VaultURLScheme = "vault"
 
-// Client to replace vault paths by the secret valued stored in the Hashicorp Vault
+// Client to replace vault paths by the secret value stored in Hashicorp Vault.
 type EnvVault struct {
 	client VaultAPI
 }
@@ -40,7 +40,7 @@ func NewDefaultVault() EnvVault {
 }
 
 // DecryptAllEnv decrypts all env vars that contain a Vault path.  All values
-// staring with `vault://` are overridden by the secret valued stored in the
+// staring with `vault://` are overridden by the secret value stored in the
 // path. For instance:
 //    Input: ["db_url=url","db_pass=vault://secret/db_pass"]
 //   Output: ["db_url=url","db_pass=ACTUAL_SECRET_PASS"]
