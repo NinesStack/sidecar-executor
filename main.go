@@ -178,7 +178,11 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
 	exec.sendStatus(TaskFinished, taskInfo.GetTaskId())
 	time.Sleep(StatusSleepTime)
-	exec.driver.Stop()
+
+	_, err := exec.driver.Stop()
+	if err != nil {
+		log.Errorf("Error stopping driver: %s", err)
+	}
 }
 
 // Tell Mesos and thus the framework that the task failed. Shutdown driver.
@@ -190,7 +194,10 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 	time.Sleep(StatusSleepTime)
 
 	// We're done with this executor, so let's stop now.
-	exec.driver.Stop()
+	_, err := exec.driver.Stop()
+	if err != nil {
+		log.Errorf("Error stopping driver: %s", err)
+	}
 }
 
 // Loop on a timed basis and check the health of the process in Sidecar.

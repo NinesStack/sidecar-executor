@@ -58,7 +58,7 @@ func CheckImage(client DockerClient, taskInfo *mesos.TaskInfo) bool {
 // callback from the executor driver.
 func StopContainer(client DockerClient, containerId string, timeout uint) error {
 	// Ignore error this time, we'll try again
-	client.StopContainer(containerId, timeout)
+	_ = client.StopContainer(containerId, timeout)
 
 	cntr, err := client.InspectContainer(containerId)
 	if err != nil {

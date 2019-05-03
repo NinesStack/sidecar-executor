@@ -141,7 +141,7 @@ func Test_sidecarStatus(t *testing.T) {
 			fetcher.ShouldError = true
 			config.SidecarRetryCount = 5
 
-			exec.sidecarStatus("deadbeef0010")
+			So(exec.sidecarStatus("deadbeef0010"), ShouldBeNil)
 			So(fetcher.callCount, ShouldEqual, 6) // 1 try + (5 retries)
 		})
 
