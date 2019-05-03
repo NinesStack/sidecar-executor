@@ -43,7 +43,6 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 
 	log.Info("Task completed: ", taskInfo.GetName())
 	exec.finishTask(taskInfo)
-	return
 }
 
 // copyLogs will copy the Docker container logs to stdout and stderr so we can

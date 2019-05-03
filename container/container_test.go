@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
+	log "github.com/sirupsen/logrus"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -134,8 +134,8 @@ func Test_GetLogs(t *testing.T) {
 
 		time.Sleep(25 * time.Millisecond) // Nasty, but lets buffer flush
 
-		So(string(stdout.Bytes()), ShouldResemble, prelude)
-		So(string(stderr.Bytes()), ShouldResemble, ending)
+		So(stdout.String(), ShouldResemble, prelude)
+		So(stderr.String(), ShouldResemble, ending)
 
 		So(dockerClient.logOpts.Stdout, ShouldBeTrue)
 		So(dockerClient.logOpts.OutputStream, ShouldNotBeNil)

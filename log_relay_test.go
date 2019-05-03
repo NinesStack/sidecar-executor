@@ -38,9 +38,8 @@ func Test_relayLogs(t *testing.T) {
 
 			exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, &result)
 
-			resultStr := string(result.Bytes())
-			So(resultStr, ShouldContainSubstring, "some stdout text")
-			So(resultStr, ShouldContainSubstring, "some stderr text")
+			So(result.String(), ShouldContainSubstring, "some stdout text")
+			So(result.String(), ShouldContainSubstring, "some stderr text")
 		})
 
 		Convey("includes the requested Docker labels", func() {
@@ -56,9 +55,8 @@ func Test_relayLogs(t *testing.T) {
 			exec.relayLogs(quitChan, "deadbeef123123123", labels, &result)
 			exec.config.ContainerLogsStdout = true
 
-			resultStr := string(result.Bytes())
-			So(resultStr, ShouldContainSubstring, `"Environment":"prod"`)
-			So(resultStr, ShouldContainSubstring, `"ServiceName":"beowulf"`)
+			So(result.String(), ShouldContainSubstring, `"Environment":"prod"`)
+			So(result.String(), ShouldContainSubstring, `"ServiceName":"beowulf"`)
 		})
 	})
 }
@@ -90,13 +88,11 @@ func Test_handleOneStream(t *testing.T) {
 			log.SetOutput(&captured)
 			exec.handleOneStream(quitChan, "stdout", relay, reader)
 
-			resultStr := string(result.Bytes())
-
-			So(resultStr, ShouldContainSubstring,
+			So(result.String(), ShouldContainSubstring,
 				`level=info msg="testing testing testing" SomeTag=test`)
 
-			So(len(strings.Split(resultStr, "\n")), ShouldEqual, 4)
-			So(string(captured.Bytes()), ShouldNotContainSubstring, "error reading Docker")
+			So(len(strings.Split(result.String(), "\n")), ShouldEqual, 4)
+			So(captured.String(), ShouldNotContainSubstring, "error reading Docker")
 		})
 
 		Convey("errors out when the name is not stderr or stdout", func() {
@@ -105,7 +101,7 @@ func Test_handleOneStream(t *testing.T) {
 
 			exec.handleOneStream(quitChan, "junk", relay, reader)
 
-			So(string(captured.Bytes()), ShouldContainSubstring, "Unknown stream type")
+			So(captured.String(), ShouldContainSubstring, "Unknown stream type")
 		})
 	})
 }
