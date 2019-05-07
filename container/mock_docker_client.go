@@ -67,8 +67,16 @@ func (m *MockDockerClient) InspectContainer(id string) (*docker.Container, error
 
 func (m *MockDockerClient) Logs(opts docker.LogsOptions) error {
 	m.logOpts = &opts
-	opts.OutputStream.Write([]byte(m.LogOutputString))
-	opts.ErrorStream.Write([]byte(m.LogErrorString))
+
+	_, err := opts.OutputStream.Write([]byte(m.LogOutputString))
+	if err != nil {
+		return err
+	}
+
+	_, err = opts.ErrorStream.Write([]byte(m.LogErrorString))
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

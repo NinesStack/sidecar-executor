@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"fmt"
+
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/Nitro/sidecar-executor/vault"
 	"github.com/Nitro/sidecar/service"
@@ -53,12 +54,12 @@ type Config struct {
 	SeedSidecar         bool          `envconfig:"SEED_SIDECAR" default:"false"`
 	DockerRepository    string        `envconfig:"DOCKER_REPOSITORY" default:"https://index.docker.io/v1/"`
 	LogsSince           time.Duration `envconfig:"LOGS_SINCE" default:"3m"`
-	ForceCpuLimit       bool          `envconfig:"FORCE_CPU_LIMIT" default:false`
-	ForceMemoryLimit    bool          `envconfig:"FORCE_MEMORY_LIMIT" default:false`
-	Debug               bool          `envconfig:"DEBUG" default:false`
+	ForceCpuLimit       bool          `envconfig:"FORCE_CPU_LIMIT" default:"false"`
+	ForceMemoryLimit    bool          `envconfig:"FORCE_MEMORY_LIMIT" default:"false"`
+	Debug               bool          `envconfig:"DEBUG" default:"false"`
 
 	// Syslogging options
-	RelaySyslog         bool     `envconfig:"RELAY_SYSLOG" default:false`
+	RelaySyslog         bool     `envconfig:"RELAY_SYSLOG" default:"false"`
 	SyslogAddr          string   `envconfig:"SYSLOG_ADDR" default:"127.0.0.1:514"`
 	ContainerLogsStdout bool     `envconfig:"CONTAINER_LOGS_STDOUT" default:"false"`
 	SendDockerLabels    []string `envconfig:"SEND_DOCKER_LABELS" default:""`
@@ -177,7 +178,11 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
 	exec.sendStatus(TaskFinished, taskInfo.GetTaskId())
 	time.Sleep(StatusSleepTime)
-	exec.driver.Stop()
+
+	_, err := exec.driver.Stop()
+	if err != nil {
+		log.Errorf("Error stopping driver: %s", err)
+	}
 }
 
 // Tell Mesos and thus the framework that the task failed. Shutdown driver.
@@ -189,7 +194,10 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 	time.Sleep(StatusSleepTime)
 
 	// We're done with this executor, so let's stop now.
-	exec.driver.Stop()
+	_, err := exec.driver.Stop()
+	if err != nil {
+		log.Errorf("Error stopping driver: %s", err)
+	}
 }
 
 // Loop on a timed basis and check the health of the process in Sidecar.
@@ -411,9 +419,7 @@ func handleSignals(scExec *sidecarExecutor) {
 	sigChan := make(chan os.Signal, 1) // Buffered!
 
 	// Grab some signals we want to catch where possible
-	signal.Notify(sigChan, os.Interrupt)
-	signal.Notify(sigChan, os.Kill)
-	signal.Notify(sigChan, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	sig := <-sigChan
 	log.Warnf("Received signal '%s', attempting clean shutdown", sig)

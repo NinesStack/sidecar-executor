@@ -25,11 +25,15 @@ func NewUDPHook(raddr string) (*UDPHook, error) {
 func (hook *UDPHook) Fire(entry *logrus.Entry) error {
 	line, err := entry.String()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to read entry, %v", err)
-		return err
+		fmt.Fprintf(os.Stderr, "Unable to read entry: %s", err)
+		return fmt.Errorf("error reading entry: %s", err)
 	}
 
-	hook.Conn.Write([]byte(line))
+	_, err = hook.Conn.Write([]byte(line))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to write entry: %s", err)
+		return fmt.Errorf("error writing entry: %s", err)
+	}
 
 	return nil
 }

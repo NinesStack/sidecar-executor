@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/Nitro/sidecar-executor/container"
-	log "github.com/sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
 	"github.com/relistan/go-director"
+	log "github.com/sirupsen/logrus"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -141,7 +141,7 @@ func Test_sidecarStatus(t *testing.T) {
 			fetcher.ShouldError = true
 			config.SidecarRetryCount = 5
 
-			exec.sidecarStatus("deadbeef0010")
+			So(exec.sidecarStatus("deadbeef0010"), ShouldBeNil)
 			So(fetcher.callCount, ShouldEqual, 6) // 1 try + (5 retries)
 		})
 
@@ -213,10 +213,10 @@ func Test_logConfig(t *testing.T) {
 
 		v := reflect.ValueOf(config)
 		for i := 0; i < v.NumField(); i++ {
-			So(string(output.Bytes()), ShouldContainSubstring, v.Type().Field(i).Name)
+			So(output.String(), ShouldContainSubstring, v.Type().Field(i).Name)
 		}
 
-		So(string(output.Bytes()), ShouldContainSubstring, "roncevalles")
+		So(output.String(), ShouldContainSubstring, "roncevalles")
 	})
 }
 
@@ -238,7 +238,7 @@ func Test_logTaskEnv(t *testing.T) {
 			Container: &mesos.ContainerInfo{
 				Docker: &mesos.ContainerInfo_DockerInfo{
 					Parameters: []*mesos.Parameter{
-						&mesos.Parameter{
+						{
 							Key:   &key,
 							Value: &value,
 						},
@@ -250,8 +250,8 @@ func Test_logTaskEnv(t *testing.T) {
 		Convey("dumps the vars it finds", func() {
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
-			So(string(output.Bytes()), ShouldContainSubstring, "--------")
-			So(string(output.Bytes()), ShouldContainSubstring, "BOCACCIO=author")
+			So(output.String(), ShouldContainSubstring, "--------")
+			So(output.String(), ShouldContainSubstring, "BOCACCIO=author")
 		})
 
 		Convey("has environment and service name if defined", func() {
@@ -271,8 +271,8 @@ func Test_logTaskEnv(t *testing.T) {
 
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
-			So(string(output.Bytes()), ShouldContainSubstring, "SERVICE_NAME=test-service")
-			So(string(output.Bytes()), ShouldContainSubstring, "ENVIRONMENT_NAME=dev")
+			So(output.String(), ShouldContainSubstring, "SERVICE_NAME=test-service")
+			So(output.String(), ShouldContainSubstring, "ENVIRONMENT_NAME=dev")
 		})
 
 		Convey("leaves environment and service undefined if no labels are set", func() {
@@ -280,8 +280,8 @@ func Test_logTaskEnv(t *testing.T) {
 
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
-			So(string(output.Bytes()), ShouldNotContainSubstring, "SERVICE_NAME=")
-			So(string(output.Bytes()), ShouldNotContainSubstring, "ENVIRONMENT_NAME=")
+			So(output.String(), ShouldNotContainSubstring, "SERVICE_NAME=")
+			So(output.String(), ShouldNotContainSubstring, "ENVIRONMENT_NAME=")
 		})
 
 		Convey("leaves version unset if it can't be parsed", func() {
@@ -289,12 +289,12 @@ func Test_logTaskEnv(t *testing.T) {
 			taskInfo.Container.Docker.Image = &image
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
-			So(string(output.Bytes()), ShouldNotContainSubstring, "SERVICE_VERSION=")
+			So(output.String(), ShouldNotContainSubstring, "SERVICE_VERSION=")
 		})
 
 		Convey("shows added env vars", func() {
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{"ADDED_VAR=true"})
-			So(string(output.Bytes()), ShouldContainSubstring, "ADDED_VAR=")
+			So(output.String(), ShouldContainSubstring, "ADDED_VAR=")
 		})
 
 		Convey("adds Sidecar seeds", func() {
@@ -302,7 +302,7 @@ func Test_logTaskEnv(t *testing.T) {
 			exec.config.SeedSidecar = true
 			addEnvVars := exec.addSidecarSeeds([]string{})
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), addEnvVars)
-			So(string(output.Bytes()), ShouldContainSubstring, "SIDECAR_SEEDS=bede,chaucer")
+			So(output.String(), ShouldContainSubstring, "SIDECAR_SEEDS=bede,chaucer")
 		})
 	})
 }

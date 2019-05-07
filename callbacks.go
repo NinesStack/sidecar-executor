@@ -154,7 +154,10 @@ func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *me
 	time.Sleep(StatusSleepTime)
 
 	log.Info("Executor believes container has exited, stopping Mesos driver")
-	exec.driver.Stop()
+	_, err = exec.driver.Stop()
+	if err != nil {
+		log.Errorf("Error stopping driver: %s", err)
+	}
 }
 
 func (exec *sidecarExecutor) FrameworkMessage(driver executor.ExecutorDriver, msg string) {

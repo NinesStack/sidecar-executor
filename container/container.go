@@ -8,17 +8,17 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
 	"github.com/pborman/uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 // Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
 // See: https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
 const defaultCpuPeriod = 50000 // 50ms
 
-var portProtocolsTokenizer = regexp.MustCompile(",\\s?")
+var portProtocolsTokenizer = regexp.MustCompile(`,\s?`)
 
 // Our own narrowly-scoped interface for Docker client
 type DockerClient interface {
@@ -58,7 +58,7 @@ func CheckImage(client DockerClient, taskInfo *mesos.TaskInfo) bool {
 // callback from the executor driver.
 func StopContainer(client DockerClient, containerId string, timeout uint) error {
 	// Ignore error this time, we'll try again
-	client.StopContainer(containerId, timeout)
+	_ = client.StopContainer(containerId, timeout)
 
 	cntr, err := client.InspectContainer(containerId)
 	if err != nil {
