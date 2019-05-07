@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -43,20 +44,21 @@ var (
 )
 
 type Config struct {
-	KillTaskTimeout     uint          `envconfig:"KILL_TASK_TIMEOUT" default:"5"` // Seconds
-	HttpTimeout         time.Duration `envconfig:"HTTP_TIMEOUT" default:"2s"`
-	SidecarRetryCount   int           `envconfig:"SIDECAR_RETRY_COUNT" default:"5"`
-	SidecarRetryDelay   time.Duration `envconfig:"SIDECAR_RETRY_DELAY" default:"3s"`
-	SidecarUrl          string        `envconfig:"SIDECAR_URL" default:"http://localhost:7777/state.json"`
-	SidecarBackoff      time.Duration `envconfig:"SIDECAR_BACKOFF" default:"1m"`
-	SidecarPollInterval time.Duration `envconfig:"SIDECAR_POLL_INTERVAL" default:"30s"`
-	SidecarMaxFails     int           `envconfig:"SIDECAR_MAX_FAILS" default:"3"`
-	SeedSidecar         bool          `envconfig:"SEED_SIDECAR" default:"false"`
-	DockerRepository    string        `envconfig:"DOCKER_REPOSITORY" default:"https://index.docker.io/v1/"`
-	LogsSince           time.Duration `envconfig:"LOGS_SINCE" default:"3m"`
-	ForceCpuLimit       bool          `envconfig:"FORCE_CPU_LIMIT" default:"false"`
-	ForceMemoryLimit    bool          `envconfig:"FORCE_MEMORY_LIMIT" default:"false"`
-	Debug               bool          `envconfig:"DEBUG" default:"false"`
+	KillTaskTimeout         uint          `envconfig:"KILL_TASK_TIMEOUT" default:"5"` // Seconds
+	HttpTimeout             time.Duration `envconfig:"HTTP_TIMEOUT" default:"2s"`
+	SidecarRetryCount       int           `envconfig:"SIDECAR_RETRY_COUNT" default:"5"`
+	SidecarRetryDelay       time.Duration `envconfig:"SIDECAR_RETRY_DELAY" default:"3s"`
+	SidecarUrl              string        `envconfig:"SIDECAR_URL" default:"http://localhost:7777/state.json"`
+	SidecarBackoff          time.Duration `envconfig:"SIDECAR_BACKOFF" default:"1m"`
+	SidecarPollInterval     time.Duration `envconfig:"SIDECAR_POLL_INTERVAL" default:"30s"`
+	SidecarMaxFails         int           `envconfig:"SIDECAR_MAX_FAILS" default:"3"`
+	SidecarDrainingDuration time.Duration `envconfig:"SIDECAR_DRAINING_DURATION" default:"10s"`
+	SeedSidecar             bool          `envconfig:"SEED_SIDECAR" default:"false"`
+	DockerRepository        string        `envconfig:"DOCKER_REPOSITORY" default:"https://index.docker.io/v1/"`
+	LogsSince               time.Duration `envconfig:"LOGS_SINCE" default:"3m"`
+	ForceCpuLimit           bool          `envconfig:"FORCE_CPU_LIMIT" default:"false"`
+	ForceMemoryLimit        bool          `envconfig:"FORCE_MEMORY_LIMIT" default:"false"`
+	Debug                   bool          `envconfig:"DEBUG" default:"false"`
 
 	// Syslogging options
 	RelaySyslog         bool     `envconfig:"RELAY_SYSLOG" default:"false"`
@@ -76,6 +78,9 @@ type sidecarExecutor struct {
 	vault           vault.EnvVault
 	config          Config
 	statusSleepTime time.Duration
+	// Populated during LaunchTask
+	containerConfig *docker.CreateContainerOptions
+	containerID     string
 }
 
 type SidecarServices struct {
@@ -86,6 +91,7 @@ type SidecarServices struct {
 
 type SidecarFetcher interface {
 	Get(url string) (resp *http.Response, err error)
+	Post(url string, contentType string, body io.Reader) (resp *http.Response, err error)
 }
 
 func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfiguration) *sidecarExecutor {
@@ -101,24 +107,25 @@ func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfigur
 
 func logConfig() {
 	log.Infof("Executor Config -----------------------")
-	log.Infof(" * KillTaskTimeout:     %d", config.KillTaskTimeout)
-	log.Infof(" * HttpTimeout:         %s", config.HttpTimeout.String())
-	log.Infof(" * SidecarRetryCount:   %d", config.SidecarRetryCount)
-	log.Infof(" * SidecarRetryDelay:   %s", config.SidecarRetryDelay.String())
-	log.Infof(" * SidecarUrl:          %s", config.SidecarUrl)
-	log.Infof(" * SidecarBackoff:      %s", config.SidecarBackoff.String())
-	log.Infof(" * SidecarPollInterval: %s", config.SidecarPollInterval.String())
-	log.Infof(" * SidecarMaxFails:     %d", config.SidecarMaxFails)
-	log.Infof(" * SeedSidecar:         %t", config.SeedSidecar)
-	log.Infof(" * DockerRepository:    %s", config.DockerRepository)
-	log.Infof(" * LogsSince:           %s", config.LogsSince.String())
-	log.Infof(" * ForceCpuLimit:       %t", config.ForceCpuLimit)
-	log.Infof(" * ForceMemoryLimit:    %t", config.ForceMemoryLimit)
-	log.Infof(" * RelaySyslog:         %t", config.RelaySyslog)
-	log.Infof(" * SyslogAddr:          %s", config.SyslogAddr)
-	log.Infof(" * ContainerLogsStdout: %t", config.ContainerLogsStdout)
-	log.Infof(" * SendDockerLabels:    %v", config.SendDockerLabels)
-	log.Infof(" * Debug:               %t", config.Debug)
+	log.Infof(" * KillTaskTimeout:         %d", config.KillTaskTimeout)
+	log.Infof(" * HttpTimeout:             %s", config.HttpTimeout.String())
+	log.Infof(" * SidecarRetryCount:       %d", config.SidecarRetryCount)
+	log.Infof(" * SidecarRetryDelay:       %s", config.SidecarRetryDelay.String())
+	log.Infof(" * SidecarUrl:              %s", config.SidecarUrl)
+	log.Infof(" * SidecarBackoff:          %s", config.SidecarBackoff.String())
+	log.Infof(" * SidecarPollInterval:     %s", config.SidecarPollInterval.String())
+	log.Infof(" * SidecarMaxFails:         %d", config.SidecarMaxFails)
+	log.Infof(" * SidecarDrainingDuration: %s", config.SidecarDrainingDuration)
+	log.Infof(" * SeedSidecar:             %t", config.SeedSidecar)
+	log.Infof(" * DockerRepository:        %s", config.DockerRepository)
+	log.Infof(" * LogsSince:               %s", config.LogsSince.String())
+	log.Infof(" * ForceCpuLimit:           %t", config.ForceCpuLimit)
+	log.Infof(" * ForceMemoryLimit:        %t", config.ForceMemoryLimit)
+	log.Infof(" * RelaySyslog:             %t", config.RelaySyslog)
+	log.Infof(" * SyslogAddr:              %s", config.SyslogAddr)
+	log.Infof(" * ContainerLogsStdout:     %t", config.ContainerLogsStdout)
+	log.Infof(" * SendDockerLabels:        %v", config.SendDockerLabels)
+	log.Infof(" * Debug:                   %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")
 	for _, setting := range os.Environ() {

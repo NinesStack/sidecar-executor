@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -166,6 +167,56 @@ func (exec *sidecarExecutor) addSidecarSeeds(envVars []string) []string {
 	}
 
 	return append(envVars, "SIDECAR_SEEDS="+strings.Join(workerNames, ","))
+}
+
+// drainService instructs Sidecar to set the current service's status to DRAINING
+func (exec *sidecarExecutor) drainService(drainingDuration time.Duration) {
+	if drainingDuration == 0 {
+		// No draining required
+		return
+	}
+
+	u, err := url.Parse(exec.config.SidecarUrl)
+	if err != nil {
+		log.Errorf("Error parsing Sidercar URL: %s", err)
+		return
+	}
+
+	if exec.containerID == "" {
+		log.Error("Attempted to drain service with empty container ID")
+		return
+	}
+
+	// URL.Host contains the port as well, if present
+	sidecarDrainServiceUrl := fmt.Sprintf("%s://%s/api/services/%s/drain", u.Scheme, u.Host, exec.containerID[:12])
+
+	drainer := func() (int, error) {
+		resp, err := exec.fetcher.Post(sidecarDrainServiceUrl, "", nil)
+		if err != nil {
+			return 0, err
+		}
+
+		defer resp.Body.Close()
+
+		return resp.StatusCode, nil
+	}
+
+	log.Warnf("Setting service ID %q status to DRAINING in Sidecar", exec.containerID[:12])
+
+	// Try several times to instruct Sidecar to set this service to DRAINING
+	for i := 0; i <= exec.config.SidecarRetryCount; i++ {
+		status, err := drainer()
+
+		if err == nil && status == 202 {
+			break
+		}
+
+		log.Warnf("Failed %d attempts to set service to DRAINING in Sidecar!", i+1)
+		time.Sleep(exec.config.SidecarRetryDelay)
+	}
+
+	// Wait for the service to finish draining before proceeding to stop it
+	time.Sleep(drainingDuration)
 }
 
 // Check if it should check Sidecar status, assuming enabled by default
