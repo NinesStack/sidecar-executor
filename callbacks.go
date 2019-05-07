@@ -56,8 +56,8 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 		addEnvVars = exec.addSidecarSeeds(addEnvVars)
 	}
 
-	// Configure the container
-	containerConfig := container.ConfigForTask(
+	// Configure the container and cache the container config
+	exec.containerConfig = container.ConfigForTask(
 		taskInfo,
 		exec.config.ForceCpuLimit,
 		exec.config.ForceMemoryLimit,
@@ -70,21 +70,24 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	exec.logTaskEnv(taskInfo, dockerLabels, addEnvVars)
 
 	// Try to decrypt any existing Vault encoded env.
-	decryptedEnv, err := exec.vault.DecryptAllEnv(containerConfig.Config.Env)
+	decryptedEnv, err := exec.vault.DecryptAllEnv(exec.containerConfig.Config.Env)
 	if err != nil {
 		log.Error(err.Error())
 		exec.failTask(taskInfo)
 		return
 	}
-	containerConfig.Config.Env = decryptedEnv
+	exec.containerConfig.Config.Env = decryptedEnv
 
 	// create the container
-	cntnr, err := exec.client.CreateContainer(*containerConfig)
+	cntnr, err := exec.client.CreateContainer(*exec.containerConfig)
 	if err != nil {
 		log.Errorf("Failed to create Docker container: %s", err)
 		exec.failTask(taskInfo)
 		return
 	}
+
+	// Cache the container ID
+	exec.containerID = cntnr.ID
 
 	// Start the container
 	log.Info("Starting container with ID " + cntnr.ID[:12])
@@ -103,7 +106,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
-	go exec.watchContainer(cntnr.ID, shouldCheckSidecar(containerConfig))
+	go exec.watchContainer(cntnr.ID, shouldCheckSidecar(exec.containerConfig))
 	go exec.monitorTask(cntnr.ID[:12], taskInfo)
 
 	// We may be responsible for log relaying. Handle, if we are.
@@ -116,6 +119,9 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 // task/container.
 func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesos.TaskID) {
 	log.Infof("Killing task: %s", *taskID.Value)
+
+	// Instruct Sidecar to set the status of the service to DRAINING
+	exec.notifyDrain()
 
 	// Stop watching the container so we don't send the wrong task status
 	go func() { exec.watchLooper.Quit() }()

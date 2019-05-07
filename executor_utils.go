@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -170,6 +171,63 @@ func (exec *sidecarExecutor) addSidecarSeeds(envVars []string) []string {
 	}
 
 	return append(envVars, "SIDECAR_SEEDS="+strings.Join(workerNames, ","))
+}
+
+// notifyDrain instructs Sidecar to set the current service's status to DRAINING
+func (exec *sidecarExecutor) notifyDrain() {
+	// Check if draining is required
+	if !shouldCheckSidecar(exec.containerConfig) ||
+		exec.config.SidecarDrainingDuration == 0 {
+		return
+	}
+
+	// NB: Unfortunately, since exec.config.SidecarUrl points to
+	// `state.json`, we need to extract the Host from it first.
+	sidecarUrl, err := url.Parse(exec.config.SidecarUrl)
+	if err != nil {
+		log.Errorf("Error parsing Sidercar URL: %s", err)
+		return
+	}
+
+	if exec.containerID == "" {
+		log.Error("Attempted to drain service with empty container ID")
+		return
+	}
+
+	// URL.Host contains the port as well, if present
+	sidecarDrainServiceUrl := url.URL{
+		Scheme: sidecarUrl.Scheme,
+		Host:   sidecarUrl.Host,
+		Path:   fmt.Sprintf("/api/services/%s/drain", exec.containerID[:12]),
+	}
+
+	drainer := func() (int, error) {
+		resp, err := exec.fetcher.Post(sidecarDrainServiceUrl.String(), "", nil)
+		if err != nil {
+			return 0, err
+		}
+
+		defer resp.Body.Close()
+
+		return resp.StatusCode, nil
+	}
+
+	log.Warnf("Setting service ID %q status to DRAINING in Sidecar", exec.containerID[:12])
+
+	// Try several times to instruct Sidecar to set this service to DRAINING
+	for i := 0; i <= exec.config.SidecarRetryCount; i++ {
+		status, err := drainer()
+
+		if err == nil && status == 202 {
+			break
+		}
+
+		log.Warnf("Failed %d attempts to set service to DRAINING in Sidecar!", i+1)
+		time.Sleep(exec.config.SidecarRetryDelay)
+	}
+
+	// Wait for the service to finish draining before proceeding to stop it
+	time.Sleep(exec.config.SidecarDrainingDuration)
 }
 
 // Check if it should check Sidecar status, assuming enabled by default

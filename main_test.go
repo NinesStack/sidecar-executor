@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -58,6 +59,10 @@ func (m *mockFetcher) Get(url string) (*http.Response, error) {
 	} else {
 		return m.successRequest()
 	}
+}
+
+func (m *mockFetcher) Post(url string, contentType string, body io.Reader) (*http.Response, error) {
+	return nil, nil
 }
 
 func (m *mockFetcher) successRequest() (*http.Response, error) {
