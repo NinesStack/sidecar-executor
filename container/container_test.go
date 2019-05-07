@@ -38,7 +38,7 @@ func Test_PullImage(t *testing.T) {
 		Convey("passes the right params", func() {
 			err := PullImage(dockerClient, taskInfo, &docker.AuthConfiguration{})
 
-			So(dockerClient.validOptions, ShouldBeTrue)
+			So(dockerClient.ValidOptions, ShouldBeTrue)
 			So(err, ShouldBeNil)
 		})
 

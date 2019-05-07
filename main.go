@@ -66,15 +66,30 @@ type Config struct {
 	SendDockerLabels    []string `envconfig:"SEND_DOCKER_LABELS" default:""`
 }
 
+type MesosExecutorDriver interface {
+	Running() bool
+	Start() (mesos.Status, error)
+	Stop() (mesos.Status, error)
+	Abort() (mesos.Status, error)
+	Join() (mesos.Status, error)
+	Run() (mesos.Status, error)
+	SendStatusUpdate(*mesos.TaskStatus) (mesos.Status, error)
+	SendFrameworkMessage(string) (mesos.Status, error)
+}
+
+type Vault interface {
+	DecryptAllEnv([]string) ([]string, error)
+}
+
 type sidecarExecutor struct {
-	driver          *executor.MesosExecutorDriver
+	driver          MesosExecutorDriver
 	client          container.DockerClient
 	fetcher         SidecarFetcher
 	watchLooper     director.Looper
 	logsQuitChan    chan struct{}
 	dockerAuth      *docker.AuthConfiguration
 	failCount       int
-	vault           vault.EnvVault
+	vault           Vault
 	config          Config
 	statusSleepTime time.Duration
 	// Populated during LaunchTask
@@ -82,10 +97,12 @@ type sidecarExecutor struct {
 	containerID     string
 }
 
+type SidecarServer struct {
+	Services map[string]service.Service
+}
+
 type SidecarServices struct {
-	Servers map[string]struct {
-		Services map[string]service.Service
-	}
+	Servers map[string]SidecarServer
 }
 
 type SidecarFetcher interface {
