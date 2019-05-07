@@ -283,15 +283,10 @@ func (exec *sidecarExecutor) exceededFailCount() bool {
 func (exec *sidecarExecutor) sidecarStatus(containerId string) error {
 	fetch := func() ([]byte, error) {
 		resp, err := exec.fetcher.Get(config.SidecarUrl)
-		defer func() {
-			if resp != nil {
-				resp.Body.Close()
-			}
-		}()
-
 		if err != nil {
 			return nil, err
 		}
+		defer resp.Body.Close()
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -306,11 +301,12 @@ func (exec *sidecarExecutor) sidecarStatus(containerId string) error {
 	var data []byte
 	for i := 0; i <= config.SidecarRetryCount; i++ {
 		data, err = fetch()
-		if err != nil {
-			log.Warnf("Failed %d health checks!", i+1)
-			time.Sleep(config.SidecarRetryDelay)
-			continue
+		if err == nil {
+			break
 		}
+
+		log.Warnf("Failed %d attempts to fetch state from Sidecar!", i+1)
+		time.Sleep(config.SidecarRetryDelay)
 	}
 
 	// We really really don't want to shut off all the jobs if Sidecar
