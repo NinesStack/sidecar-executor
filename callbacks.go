@@ -151,7 +151,7 @@ func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *me
 	exec.sendStatus(status, taskID)
 
 	// We have to give the driver time to send the message
-	time.Sleep(StatusSleepTime)
+	time.Sleep(exec.statusSleepTime)
 
 	log.Info("Executor believes container has exited, stopping Mesos driver")
 	_, err = exec.driver.Stop()

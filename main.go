@@ -35,7 +35,7 @@ const (
 )
 
 const (
-	StatusSleepTime = 2 * time.Second // How long we wait for final status updates to hit Mesos worker
+	DefaultStatusSleepTime = 2 * time.Second // How long we wait for final status updates to hit Mesos worker
 )
 
 var (
@@ -66,15 +66,16 @@ type Config struct {
 }
 
 type sidecarExecutor struct {
-	driver       *executor.MesosExecutorDriver
-	client       container.DockerClient
-	fetcher      SidecarFetcher
-	watchLooper  director.Looper
-	logsQuitChan chan struct{}
-	dockerAuth   *docker.AuthConfiguration
-	failCount    int
-	vault        vault.EnvVault
-	config       Config
+	driver          *executor.MesosExecutorDriver
+	client          container.DockerClient
+	fetcher         SidecarFetcher
+	watchLooper     director.Looper
+	logsQuitChan    chan struct{}
+	dockerAuth      *docker.AuthConfiguration
+	failCount       int
+	vault           vault.EnvVault
+	config          Config
+	statusSleepTime time.Duration
 }
 
 type SidecarServices struct {
@@ -89,11 +90,12 @@ type SidecarFetcher interface {
 
 func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfiguration) *sidecarExecutor {
 	return &sidecarExecutor{
-		client:     client,
-		fetcher:    &http.Client{Timeout: config.HttpTimeout},
-		dockerAuth: auth,
-		vault:      vault.NewDefaultVault(),
-		config:     config,
+		client:          client,
+		fetcher:         &http.Client{Timeout: config.HttpTimeout},
+		dockerAuth:      auth,
+		vault:           vault.NewDefaultVault(),
+		config:          config,
+		statusSleepTime: DefaultStatusSleepTime,
 	}
 }
 
@@ -177,7 +179,7 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 // Tell Mesos and thus the framework that the task finished. Shutdown driver.
 func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
 	exec.sendStatus(TaskFinished, taskInfo.GetTaskId())
-	time.Sleep(StatusSleepTime)
+	time.Sleep(exec.statusSleepTime)
 
 	_, err := exec.driver.Stop()
 	if err != nil {
@@ -191,7 +193,7 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 
 	// Unfortunately the status updates are sent async and we can't
 	// get a handle on the channel used to send them. So we wait
-	time.Sleep(StatusSleepTime)
+	time.Sleep(exec.statusSleepTime)
 
 	// We're done with this executor, so let's stop now.
 	_, err := exec.driver.Stop()
