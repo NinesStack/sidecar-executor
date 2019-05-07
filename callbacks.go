@@ -102,7 +102,7 @@ func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo
 	SetProcessName("sidecar-executor " + cntnr.ID[:12] + " (" + *taskInfo.Container.Docker.Image + ")")
 
 	exec.watchLooper =
-		director.NewImmediateTimedLooper(director.FOREVER, config.SidecarPollInterval, make(chan error))
+		director.NewImmediateTimedLooper(director.FOREVER, exec.config.SidecarPollInterval, make(chan error))
 
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
@@ -128,7 +128,7 @@ func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *me
 
 	containerName := container.GetContainerName(taskID)
 
-	err := container.StopContainer(exec.client, containerName, config.KillTaskTimeout)
+	err := container.StopContainer(exec.client, containerName, exec.config.KillTaskTimeout)
 	if err != nil {
 		log.Errorf("Error stopping container %s! %s", containerName, err.Error())
 	}

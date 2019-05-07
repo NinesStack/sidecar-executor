@@ -31,7 +31,7 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 	if err != nil {
 		log.Errorf("Error! %s", err)
 		// Something went wrong, we better take this thing out!
-		err := container.StopContainer(exec.client, containerName, config.KillTaskTimeout)
+		err := container.StopContainer(exec.client, containerName, exec.config.KillTaskTimeout)
 		if err != nil {
 			log.Errorf("Error stopping container %s! %s", containerName, err)
 		}
@@ -50,7 +50,7 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 // capture some failure information in the Mesos logs. Then tooling can fetch
 // crash info from the Mesos API.
 func (exec *sidecarExecutor) copyLogs(containerId string) {
-	startTimeEpoch := time.Now().UTC().Add(0 - config.LogsSince).Unix()
+	startTimeEpoch := time.Now().UTC().Add(0 - exec.config.LogsSince).Unix()
 
 	container.GetLogs(
 		exec.client, containerId, startTimeEpoch, os.Stdout, os.Stderr,

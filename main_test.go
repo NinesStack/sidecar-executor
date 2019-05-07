@@ -129,11 +129,8 @@ func Test_sidecarStatus(t *testing.T) {
 		fetcher := &mockFetcher{}
 
 		client := &container.MockDockerClient{}
-		exec := newSidecarExecutor(client, &docker.AuthConfiguration{})
+		exec := newSidecarExecutor(client, &docker.AuthConfiguration{}, Config{})
 		exec.fetcher = fetcher
-
-		config.SidecarRetryDelay = 0
-		config.SidecarRetryCount = 0
 
 		Convey("return healthy on HTTP request errors", func() {
 			fetcher.ShouldError = true
@@ -144,7 +141,7 @@ func Test_sidecarStatus(t *testing.T) {
 
 		Convey("retries as expected", func() {
 			fetcher.ShouldError = true
-			config.SidecarRetryCount = 5
+			exec.config.SidecarRetryCount = 5
 
 			So(exec.sidecarStatus("deadbeef0010"), ShouldBeNil)
 			So(fetcher.callCount, ShouldEqual, 6) // 1 try + (5 retries)
@@ -159,7 +156,7 @@ func Test_sidecarStatus(t *testing.T) {
 		Convey("errors when it can talk to Sidecar and fail count is exceeded", func() {
 			fetcher.ShouldFail = true
 
-			config.SidecarMaxFails = 3
+			exec.config.SidecarMaxFails = 3
 			exec.failCount = 3
 
 			result := exec.sidecarStatus("deadbeef0010")
@@ -171,7 +168,7 @@ func Test_sidecarStatus(t *testing.T) {
 		Convey("healthy when it can talk to Sidecar and fail count is below limit", func() {
 			fetcher.ShouldFail = true
 
-			config.SidecarMaxFails = 3
+			exec.config.SidecarMaxFails = 3
 			exec.failCount = 1
 
 			result := exec.sidecarStatus("deadbeef0010")
@@ -182,7 +179,7 @@ func Test_sidecarStatus(t *testing.T) {
 		Convey("resets failCount on first healthy response", func() {
 			fetcher.ShouldFail = true
 
-			config.SidecarMaxFails = 3
+			exec.config.SidecarMaxFails = 3
 			exec.failCount = 1
 
 			result := exec.sidecarStatus("deadbeef0010")
@@ -213,8 +210,11 @@ func Test_logConfig(t *testing.T) {
 
 		os.Setenv("MESOS_LEGEND", "roncevalles")
 
+		config, err := initConfig()
+		So(err, ShouldBeNil)
+
 		log.SetOutput(output) // Don't show the output
-		logConfig()
+		logConfig(config)
 
 		v := reflect.ValueOf(config)
 		for i := 0; i < v.NumField(); i++ {
@@ -235,7 +235,7 @@ func Test_logTaskEnv(t *testing.T) {
 
 		fetcher := &mockFetcher{}
 		client := &container.MockDockerClient{}
-		exec := newSidecarExecutor(client, &docker.AuthConfiguration{})
+		exec := newSidecarExecutor(client, &docker.AuthConfiguration{}, Config{})
 		exec.fetcher = fetcher
 
 		taskInfo := &mesos.TaskInfo{
@@ -314,15 +314,17 @@ func Test_logTaskEnv(t *testing.T) {
 
 func Test_watchContainer(t *testing.T) {
 	Convey("When watching the container", t, func() {
-		config.SidecarBackoff = time.Duration(0) // Don't wait to start health checking
 		client := &container.MockDockerClient{}
-		exec := newSidecarExecutor(client, &docker.AuthConfiguration{})
+		config, err := initConfig()
+		So(err, ShouldBeNil)
+		config.SidecarBackoff = time.Duration(0)    // Don't wait to start health checking
+		config.SidecarRetryDelay = time.Duration(0) // Sidecar status should fail if ever checked
+		exec := newSidecarExecutor(client, &docker.AuthConfiguration{}, config)
 
 		resultChan := make(chan error, 5)
 		exec.watchLooper = director.NewFreeLooper(1, resultChan)
 
-		config.SidecarRetryDelay = time.Duration(0) // Sidecar status should fail if ever checked
-		exec.failCount = config.SidecarMaxFails
+		exec.failCount = exec.config.SidecarMaxFails
 		os.Setenv("TASK_HOST", "roncevalles")
 		exec.fetcher = &mockFetcher{
 			ShouldFail: true,

@@ -39,10 +39,6 @@ const (
 	DefaultStatusSleepTime = 2 * time.Second // How long we wait for final status updates to hit Mesos worker
 )
 
-var (
-	config Config
-)
-
 type Config struct {
 	KillTaskTimeout         uint          `envconfig:"KILL_TASK_TIMEOUT" default:"5"` // Seconds
 	HttpTimeout             time.Duration `envconfig:"HTTP_TIMEOUT" default:"2s"`
@@ -97,7 +93,7 @@ type SidecarFetcher interface {
 	Post(url string, contentType string, body io.Reader) (resp *http.Response, err error)
 }
 
-func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfiguration) *sidecarExecutor {
+func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfiguration, config Config) *sidecarExecutor {
 	return &sidecarExecutor{
 		client:          client,
 		fetcher:         &http.Client{Timeout: config.HttpTimeout},
@@ -108,7 +104,7 @@ func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfigur
 	}
 }
 
-func logConfig() {
+func logConfig(config Config) {
 	log.Infof("Executor Config -----------------------")
 	log.Infof(" * KillTaskTimeout:         %d", config.KillTaskTimeout)
 	log.Infof(" * HttpTimeout:             %s", config.HttpTimeout.String())
@@ -226,7 +222,7 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 func (exec *sidecarExecutor) watchContainer(containerId string, checkSidecar bool) {
 	log.Infof("Watching container %s [checkSidecar: %t]", containerId[:12], checkSidecar)
 	if checkSidecar {
-		time.Sleep(config.SidecarBackoff)
+		time.Sleep(exec.config.SidecarBackoff)
 	}
 
 	exec.watchLooper.Loop(func() error {
@@ -296,13 +292,13 @@ func shouldBeKilled(svc *service.Service) bool {
 }
 
 func (exec *sidecarExecutor) exceededFailCount() bool {
-	return exec.failCount >= config.SidecarMaxFails
+	return exec.failCount >= exec.config.SidecarMaxFails
 }
 
 // Validate the status of this task with Sidecar
 func (exec *sidecarExecutor) sidecarStatus(containerId string) error {
 	fetch := func() ([]byte, error) {
-		resp, err := exec.fetcher.Get(config.SidecarUrl)
+		resp, err := exec.fetcher.Get(exec.config.SidecarUrl)
 		if err != nil {
 			return nil, err
 		}
@@ -319,14 +315,14 @@ func (exec *sidecarExecutor) sidecarStatus(containerId string) error {
 	// Try to connect to Sidecar, with some retries
 	var err error
 	var data []byte
-	for i := 0; i <= config.SidecarRetryCount; i++ {
+	for i := 0; i <= exec.config.SidecarRetryCount; i++ {
 		data, err = fetch()
 		if err == nil {
 			break
 		}
 
 		log.Warnf("Failed %d attempts to fetch state from Sidecar!", i+1)
-		time.Sleep(config.SidecarRetryDelay)
+		time.Sleep(exec.config.SidecarRetryDelay)
 	}
 
 	// We really really don't want to shut off all the jobs if Sidecar
@@ -363,7 +359,7 @@ func (exec *sidecarExecutor) sidecarStatus(containerId string) error {
 			return nil
 		}
 
-		log.Errorf("Health failure count exceeded %d", config.SidecarMaxFails)
+		log.Errorf("Health failure count exceeded %d", exec.config.SidecarMaxFails)
 
 		exec.failCount = 0
 		return errors.New("Unhealthy container: " + containerId + " failing task!")
@@ -378,13 +374,13 @@ func (exec *sidecarExecutor) sidecarStatus(containerId string) error {
 // locations. Note that an environment variable of DOCKER_CONFIG can override the
 // other locations. If it's set, we'll look in $DOCKER_CONFIG/config.json.
 // https://godoc.org/github.com/fsouza/go-dockerclient#NewAuthConfigurationsFromDockerCfg
-func getDockerAuthConfig() docker.AuthConfiguration {
+func getDockerAuthConfig(dockerRepository string) docker.AuthConfiguration {
 	lookup := func() (docker.AuthConfiguration, error) {
 		// Attempt to fetch and configure Docker auth
 		auths, err := docker.NewAuthConfigurationsFromDockerCfg()
 		if err == nil {
-			if auth, ok := auths.Configs[config.DockerRepository]; ok {
-				log.Infof("Found Docker auth configuration for '%s'", config.DockerRepository)
+			if auth, ok := auths.Configs[dockerRepository]; ok {
+				log.Infof("Found Docker auth configuration for '%s'", dockerRepository)
 				return auth, nil
 			}
 		}
@@ -404,7 +400,7 @@ func getDockerAuthConfig() docker.AuthConfiguration {
 	if err != nil {
 		log.Warnf(
 			"No docker auth match for repository '%s'... proceeding anyway",
-			config.DockerRepository,
+			dockerRepository,
 		)
 	}
 
@@ -449,11 +445,13 @@ func handleSignals(scExec *sidecarExecutor) {
 	os.Exit(130)                // Ctrl-C received or equivalent
 }
 
-func init() {
+func initConfig() (Config, error) {
 	flag.Parse() // Required by mesos-go executor driver
+
+	var config Config
 	err := envconfig.Process("executor", &config)
 	if err != nil {
-		log.Fatal(err.Error())
+		return Config{}, fmt.Errorf("failed to process envconfig: %s", err)
 	}
 
 	log.SetOutput(os.Stdout)
@@ -462,11 +460,18 @@ func init() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
+
+	return config, nil
 }
 
 func main() {
 	log.Info("Starting Sidecar Executor")
-	logConfig()
+	config, err := initConfig()
+	if err != nil {
+		log.Fatalf("Failed to init config: %s", err)
+	}
+
+	logConfig(config)
 
 	// Get a Docker client. Without one, we can't do anything.
 	dockerClient, err := docker.NewClientFromEnv()
@@ -474,8 +479,8 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	dockerAuth := getDockerAuthConfig()
-	scExec := newSidecarExecutor(dockerClient, &dockerAuth)
+	dockerAuth := getDockerAuthConfig(config.DockerRepository)
+	scExec := newSidecarExecutor(dockerClient, &dockerAuth, config)
 	dconfig := executor.DriverConfig{Executor: scExec}
 
 	driver, err := executor.NewMesosExecutorDriver(dconfig)
