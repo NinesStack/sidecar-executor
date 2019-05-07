@@ -67,8 +67,18 @@ type Config struct {
 	SendDockerLabels    []string `envconfig:"SEND_DOCKER_LABELS" default:""`
 }
 
+type MesosExecutorDriver interface {
+	Start() (mesos.Status, error)
+	Stop() (mesos.Status, error)
+	Abort() (mesos.Status, error)
+	Join() (mesos.Status, error)
+	Run() (mesos.Status, error)
+	SendStatusUpdate(*mesos.TaskStatus) (mesos.Status, error)
+	SendFrameworkMessage(string) (mesos.Status, error)
+}
+
 type sidecarExecutor struct {
-	driver          *executor.MesosExecutorDriver
+	driver          MesosExecutorDriver
 	client          container.DockerClient
 	fetcher         SidecarFetcher
 	watchLooper     director.Looper
