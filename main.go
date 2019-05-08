@@ -176,15 +176,26 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
 	}
 }
 
-// Tell Mesos and thus the framework that the task finished. Shutdown driver.
-func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
-	exec.sendStatus(TaskFinished, taskInfo.GetTaskId())
-	time.Sleep(exec.statusSleepTime)
+func (exec *sidecarExecutor) stopDriver() {
+	if !exec.driver.Running() {
+		return
+	}
 
 	_, err := exec.driver.Stop()
 	if err != nil {
-		log.Errorf("Error stopping driver: %s", err)
+		log.Errorf("Error stopping mesos driver: %s", err)
 	}
+}
+
+// Tell Mesos and thus the framework that the task finished. Shutdown driver.
+func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
+	exec.sendStatus(TaskFinished, taskInfo.GetTaskId())
+
+	// Unfortunately the status updates are sent async and we can't
+	// get a handle on the channel used to send them. So we wait
+	time.Sleep(exec.statusSleepTime)
+
+	exec.stopDriver()
 }
 
 // Tell Mesos and thus the framework that the task failed. Shutdown driver.
@@ -195,11 +206,7 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 	// get a handle on the channel used to send them. So we wait
 	time.Sleep(exec.statusSleepTime)
 
-	// We're done with this executor, so let's stop now.
-	_, err := exec.driver.Stop()
-	if err != nil {
-		log.Errorf("Error stopping driver: %s", err)
-	}
+	exec.stopDriver()
 }
 
 // Loop on a timed basis and check the health of the process in Sidecar.
