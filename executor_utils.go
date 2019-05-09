@@ -112,7 +112,11 @@ func (exec *sidecarExecutor) getMasterHostname() (string, error) {
 
 // getWorkerHostnames returns a slice of all the current worker hostnames
 func (exec *sidecarExecutor) getWorkerHostnames(masterHostname string) ([]string, error) {
-	masterEndpoint := "http://" + masterHostname + ":5050/slaves"
+	masterAddr := masterHostname
+	if exec.config.MesosMasterPort != "" {
+		masterAddr += ":" + exec.config.MesosMasterPort
+	}
+	masterEndpoint := "http://" + masterAddr + "/slaves"
 
 	type workersStruct struct {
 		Hostname string `json:"hostname"`
