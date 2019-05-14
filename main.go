@@ -86,6 +86,7 @@ type sidecarExecutor struct {
 	client          container.DockerClient
 	fetcher         SidecarFetcher
 	watchLooper     director.Looper
+	watcherDoneChan chan struct{}
 	logsQuitChan    chan struct{}
 	dockerAuth      *docker.AuthConfiguration
 	failCount       int
@@ -114,6 +115,7 @@ func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfigur
 	return &sidecarExecutor{
 		client:          client,
 		fetcher:         &http.Client{Timeout: config.HttpTimeout},
+		watcherDoneChan: make(chan struct{}),
 		dockerAuth:      auth,
 		vault:           vault.NewDefaultVault(),
 		config:          config,

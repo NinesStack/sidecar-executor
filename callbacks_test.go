@@ -427,6 +427,7 @@ func Test_ExecutorCallbacks(t *testing.T) {
 					Labels: dummyContainerLabels,
 				},
 			}
+
 			exec.watchLooper = director.NewFreeLooper(1, make(chan error))
 
 			Convey("drains the service", func() {
@@ -445,6 +446,16 @@ func Test_ExecutorCallbacks(t *testing.T) {
 				Convey("and stops the Mesos driver", func() {
 					So(dummyMesosDriver.isStopped, ShouldBeTrue)
 				})
+			})
+
+			Convey("stops draining the service if the container exits prematurely", func() {
+				exec.config.SidecarDrainingDuration = 100 * time.Millisecond
+				exec.watcherDoneChan = make(chan struct{})
+				go exec.watchContainer(dummyContainerId, shouldCheckSidecar(exec.containerConfig))
+				go exec.monitorTask(dummyContainerId, &taskInfo)
+
+				exec.KillTask(exec.driver, &dummyTaskId)
+				So(<-exec.watcherDoneChan, ShouldResemble, struct{}{})
 			})
 
 			Convey("tries multiple times to drain the service", func() {

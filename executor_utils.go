@@ -42,6 +42,9 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		return
 	}
 
+	// Release any goroutines waiting for the watcher to complete
+	close(exec.watcherDoneChan)
+
 	log.Info("Task completed: ", taskInfo.GetName())
 	exec.finishTask(taskInfo)
 }
@@ -226,8 +229,14 @@ func (exec *sidecarExecutor) notifyDrain() {
 		time.Sleep(exec.config.SidecarRetryDelay)
 	}
 
-	// Wait for the service to finish draining before proceeding to stop it
-	time.Sleep(exec.config.SidecarDrainingDuration)
+	ticker := time.NewTicker(exec.config.SidecarDrainingDuration)
+	defer ticker.Stop()
+	select {
+	case <-ticker.C:
+		// Finished waiting SidecarDrainingDuration
+	case <-exec.watcherDoneChan:
+		// Bail out early if the watcher exits in the mean time
+	}
 }
 
 // Check if it should check Sidecar status, assuming enabled by default
