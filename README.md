@@ -97,28 +97,28 @@ in the Mesos task. These will then be present for the executor at the time that
 it runs. Note that these are separate from the environment variables used in
 the Docker container. Currently the settings available are:
 
-```
-    Setting              Default
-	------------------------------------------------------
-	KillTaskTimeout:     5
-	HttpTimeout:         2s
-	SidecarRetryCount:   5
-	SidecarRetryDelay:   3s
-	SidecarUrl:          http://localhost:7777/state.json
-	SidecarBackoff:      1m5s
-	SidecarPollInterval: 30s
-	SidecarMaxFails:     3
-	SeedSidecar:         false
-	DockerRepository:    https://index.docker.io/v1/
-	LogsSince:           3m
-	ForceCpuLimit:       false
-	ForceMemoryLimit:    false
-	Debug:               false
-	RelaySyslog          false
-	SyslogAddr           127.0.0.1:514
-	ContainerLogsStdout  false
-	SendDockerLabels     []
-```
+Setting                 | Default
+------------------------|----------------------------
+KillTaskTimeout         | 5 (seconds)
+HttpTimeout             | 2s
+SidecarRetryCount       | 5
+SidecarRetryDelay       | 3s
+SidecarUrl              | http://localhost:7777/state.json
+SidecarBackoff          | 1m
+SidecarPollInterval     | 30s
+SidecarMaxFails         | 3
+SidecarDrainingDuration | 10s
+SeedSidecar             | false
+DockerRepository        | https://index.docker.io/v1/
+LogsSince               | 3m
+ForceCpuLimit           | false
+ForceMemoryLimit        | false
+Debug                   | false
+MesosMasterPort         | 5050
+RelaySyslog             | false
+SyslogAddr              | 127.0.0.1:514
+ContainerLogsStdout     | false
+SendDockerLabels        | []
 
 All of the environment variables are of the form `EXECUTOR_SIDECAR_RETRY_DELAY`
 where all of the CamelCased words are split apart, and each setting is prefixed
@@ -156,6 +156,11 @@ with `EXECUTOR_`.
    many _affirmed_ unhealthy checks we need to receive, each spaced apart by
    `SidecarPollInterval`.
 
+ * **SidecarDrainingDuration**: How much time to wait before killing the container
+   after instructing Sidecar to set the current service's status to `DRAINING`.
+   Setting this to `0` will prevent the executor from telling Sidecar to trigger
+   the `DRAINING` state and it will kill the container as soon as possible.
+
  * **SeedSidecar**: Should we query the Mesos master for the list of workers
    and then provide those in the `SIDECAR_SEEDS` environment variables?
 
@@ -176,6 +181,8 @@ with `EXECUTOR_`.
    cgroups (via Docker)?
 
  * **Debug**: Should we turn on debug logging (verbose!) for this executor?
+
+ * **MesosMasterPort**: The port on which the Mesos Master node listens on.
 
  * **RelaySyslog**: Should we relay container logs to syslog? This is a bare UDP
    implementation suitable for loggers that don't care about syslog protocol.

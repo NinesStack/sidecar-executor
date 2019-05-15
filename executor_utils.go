@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -30,7 +31,7 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 	if err != nil {
 		log.Errorf("Error! %s", err)
 		// Something went wrong, we better take this thing out!
-		err := container.StopContainer(exec.client, containerName, config.KillTaskTimeout)
+		err := container.StopContainer(exec.client, containerName, exec.config.KillTaskTimeout)
 		if err != nil {
 			log.Errorf("Error stopping container %s! %s", containerName, err)
 		}
@@ -41,6 +42,9 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		return
 	}
 
+	// Release any goroutines waiting for the watcher to complete
+	close(exec.watcherDoneChan)
+
 	log.Info("Task completed: ", taskInfo.GetName())
 	exec.finishTask(taskInfo)
 }
@@ -49,7 +53,7 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 // capture some failure information in the Mesos logs. Then tooling can fetch
 // crash info from the Mesos API.
 func (exec *sidecarExecutor) copyLogs(containerId string) {
-	startTimeEpoch := time.Now().UTC().Add(0 - config.LogsSince).Unix()
+	startTimeEpoch := time.Now().UTC().Add(0 - exec.config.LogsSince).Unix()
 
 	container.GetLogs(
 		exec.client, containerId, startTimeEpoch, os.Stdout, os.Stderr,
@@ -112,7 +116,11 @@ func (exec *sidecarExecutor) getMasterHostname() (string, error) {
 
 // getWorkerHostnames returns a slice of all the current worker hostnames
 func (exec *sidecarExecutor) getWorkerHostnames(masterHostname string) ([]string, error) {
-	masterEndpoint := "http://" + masterHostname + ":5050/slaves"
+	masterAddr := masterHostname
+	if exec.config.MesosMasterPort != "" {
+		masterAddr += ":" + exec.config.MesosMasterPort
+	}
+	masterEndpoint := "http://" + masterAddr + "/slaves"
 
 	type workersStruct struct {
 		Hostname string `json:"hostname"`
@@ -166,6 +174,69 @@ func (exec *sidecarExecutor) addSidecarSeeds(envVars []string) []string {
 	}
 
 	return append(envVars, "SIDECAR_SEEDS="+strings.Join(workerNames, ","))
+}
+
+// notifyDrain instructs Sidecar to set the current service's status to DRAINING
+func (exec *sidecarExecutor) notifyDrain() {
+	// Check if draining is required
+	if !shouldCheckSidecar(exec.containerConfig) ||
+		exec.config.SidecarDrainingDuration == 0 {
+		return
+	}
+
+	// NB: Unfortunately, since exec.config.SidecarUrl points to
+	// `state.json`, we need to extract the Host from it first.
+	sidecarUrl, err := url.Parse(exec.config.SidecarUrl)
+	if err != nil {
+		log.Errorf("Error parsing Sidercar URL: %s", err)
+		return
+	}
+
+	if exec.containerID == "" {
+		log.Error("Attempted to drain service with empty container ID")
+		return
+	}
+
+	// URL.Host contains the port as well, if present
+	sidecarDrainServiceUrl := url.URL{
+		Scheme: sidecarUrl.Scheme,
+		Host:   sidecarUrl.Host,
+		Path:   fmt.Sprintf("/api/services/%s/drain", exec.containerID[:12]),
+	}
+
+	drainer := func() (int, error) {
+		resp, err := exec.fetcher.Post(sidecarDrainServiceUrl.String(), "", nil)
+		if err != nil {
+			return 0, err
+		}
+
+		defer resp.Body.Close()
+
+		return resp.StatusCode, nil
+	}
+
+	log.Warnf("Setting service ID %q status to DRAINING in Sidecar", exec.containerID[:12])
+
+	// Try several times to instruct Sidecar to set this service to DRAINING
+	for i := 0; i <= exec.config.SidecarRetryCount; i++ {
+		status, err := drainer()
+
+		if err == nil && status == 202 {
+			break
+		}
+
+		log.Warnf("Failed %d attempts to set service to DRAINING in Sidecar!", i+1)
+		time.Sleep(exec.config.SidecarRetryDelay)
+	}
+
+	ticker := time.NewTicker(exec.config.SidecarDrainingDuration)
+	defer ticker.Stop()
+	select {
+	case <-ticker.C:
+		// Finished waiting SidecarDrainingDuration
+	case <-exec.watcherDoneChan:
+		// Bail out early if the watcher exits in the mean time
+	}
 }
 
 // Check if it should check Sidecar status, assuming enabled by default

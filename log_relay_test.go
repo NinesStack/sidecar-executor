@@ -19,7 +19,10 @@ func Test_relayLogs(t *testing.T) {
 			LogOutputString: "this is some stdout text\n",
 			LogErrorString:  "this is some stderr text\n",
 		}
-		exec := newSidecarExecutor(dockerClient, &docker.AuthConfiguration{})
+
+		config, err := initConfig()
+		So(err, ShouldBeNil)
+		exec := newSidecarExecutor(dockerClient, &docker.AuthConfiguration{}, config)
 		exec.config.SendDockerLabels = []string{"Environment", "ServiceName"}
 
 		// Stub out the fetcher
@@ -65,7 +68,9 @@ func Test_handleOneStream(t *testing.T) {
 	Convey("handleOneStream()", t, func() {
 		fetcher := &mockFetcher{}
 		client := &container.MockDockerClient{}
-		exec := newSidecarExecutor(client, &docker.AuthConfiguration{})
+		config, err := initConfig()
+		So(err, ShouldBeNil)
+		exec := newSidecarExecutor(client, &docker.AuthConfiguration{}, config)
 		exec.fetcher = fetcher
 
 		quitChan := make(chan struct{})

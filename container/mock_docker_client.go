@@ -7,7 +7,7 @@ import (
 )
 
 type MockDockerClient struct {
-	validOptions                bool
+	ValidOptions                bool
 	PullImageShouldError        bool
 	Images                      []docker.APIImages
 	ListImagesShouldError       bool
@@ -21,6 +21,7 @@ type MockDockerClient struct {
 	LogErrorString              string
 	ListContainersShouldError   bool
 	ListContainersContainers    []docker.APIContainers
+	ContainerStarted            bool
 }
 
 func (m *MockDockerClient) PullImage(opts docker.PullImageOptions, auth docker.AuthConfiguration) error {
@@ -29,7 +30,7 @@ func (m *MockDockerClient) PullImage(opts docker.PullImageOptions, auth docker.A
 	}
 
 	if len(opts.Repository) > 5 && (docker.AuthConfiguration{}) == auth {
-		m.validOptions = true
+		m.ValidOptions = true
 	}
 
 	return nil
@@ -82,10 +83,11 @@ func (m *MockDockerClient) Logs(opts docker.LogsOptions) error {
 }
 
 func (m *MockDockerClient) CreateContainer(opts docker.CreateContainerOptions) (*docker.Container, error) {
-	return nil, nil
+	return &docker.Container{ID: opts.Name}, nil
 }
 
 func (m *MockDockerClient) StartContainer(id string, hostConfig *docker.HostConfig) error {
+	m.ContainerStarted = true
 	return nil
 }
 
