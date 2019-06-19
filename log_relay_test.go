@@ -108,5 +108,19 @@ func Test_handleOneStream(t *testing.T) {
 
 			So(captured.String(), ShouldContainSubstring, "Unknown stream type")
 		})
+
+		Convey("sends strings containing 'error' to stderr, everything else to stdout", func() {
+			dataWithError := []byte("ERROR: testing testing testing\n123\n456")
+			readerWithError := bytes.NewReader(dataWithError)
+
+			var captured bytes.Buffer // System log, NOT logger
+			log.SetOutput(&captured)
+
+			exec.handleOneStream(quitChan, "stderr", relay, readerWithError)
+
+			So(result.String(), ShouldContainSubstring, `level=error msg="ERROR:`)
+			So(result.String(), ShouldContainSubstring, `level=info msg=123`)
+			So(result.String(), ShouldContainSubstring, `level=info msg=456`)
+		})
 	})
 }

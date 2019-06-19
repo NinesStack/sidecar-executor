@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"io"
+	"strings"
 
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/Nitro/sidecar-executor/loghooks"
@@ -79,7 +80,12 @@ func (exec *sidecarExecutor) handleOneStream(quitChan chan struct{}, name string
 		case "stdout":
 			logger.Info(text) // Send to syslog "info"
 		case "stderr":
-			logger.Error(text) // Send to syslog "error"
+			// Pretty basic attempt to scrape only errors from the logs
+			if strings.Contains(strings.ToLower(text), "error") {
+				logger.Error(text) // Send to syslog "error"
+			} else {
+				logger.Info(text) // Send to syslog "info"
+			}
 		default:
 			log.Errorf("handleOneStream(): Unknown stream type '%s'. Exiting log pump.", name)
 			return
