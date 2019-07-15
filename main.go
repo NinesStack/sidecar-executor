@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -147,7 +148,9 @@ func logConfig(config Config) {
 	log.Infof(" * Debug:                   %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")
-	for _, setting := range os.Environ() {
+	envVars := os.Environ()
+	sort.Strings(envVars)
+	for _, setting := range envVars {
 		if setting == "VAULT_TOKEN" {
 			continue
 		}
