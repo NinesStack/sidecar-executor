@@ -10,7 +10,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const VaultURLScheme = "vault"
+const (
+	VaultURLScheme  = "vault"
+	VaultDefaultKey = "value"
+)
 
 // Client to replace vault paths by the secret value stored in Hashicorp Vault.
 type EnvVault struct {
@@ -47,7 +50,7 @@ func NewDefaultVault() EnvVault {
 //
 //
 // By default, the key used to retrieve the contents of the Secret that Vault
-// returns is the string "value". If you have more than one entry stored in a
+// returns is the string `VaultDefaultKey`. If you have more than one entry stored in a
 // Secret and need to refer to them by name, you may append a query string
 // specifying the key, such as:
 //    vault://secret/prod-database?key=username
@@ -98,7 +101,7 @@ func (v EnvVault) ReadSecretValue(vaultURL string) (string, error) {
 	q := parsed.Query()
 	key := q["key"]
 	if key == nil {
-		key = []string{"value"}
+		key = []string{VaultDefaultKey}
 	}
 
 	value, ok := secret.Data[key[0]].(string)
