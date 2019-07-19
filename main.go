@@ -151,14 +151,18 @@ func logConfig(config Config) {
 	envVars := os.Environ()
 	sort.Strings(envVars)
 	for _, setting := range envVars {
-		if setting == "VAULT_TOKEN" {
+
+		// We don't want to log the Vault token since it can be used to log in
+		// as us. But it's ok to log VAULT_TOKEN_FILE, so we work around that.
+		if strings.HasPrefix(setting, "VAULT_TOKEN=") {
 			continue
 		}
 
-		if (len(setting) >= 5 && setting[:5] == "MESOS") ||
-			((len(setting) >= 8) && setting[:8] == "EXECUTOR") ||
-			((len(setting) >= 5) && setting[:5] == "VAULT") ||
+		if strings.HasPrefix(setting, "MESOS") ||
+			strings.HasPrefix(setting, "EXECUTOR") ||
+			strings.HasPrefix(setting, "VAULT") ||
 			(setting == "HOME") {
+
 			pair := strings.Split(setting, "=")
 			log.Infof(" * %-30s: %s", pair[0], pair[1])
 		}
