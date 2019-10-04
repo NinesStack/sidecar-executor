@@ -23,7 +23,7 @@ import (
 	"github.com/Nitro/sidecar/service"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/mesos/mesos-go/api/v0/executor"
-	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
+	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/relistan/envconfig"
 	"github.com/relistan/go-director"
 	log "github.com/sirupsen/logrus"
@@ -185,21 +185,21 @@ func (exec *sidecarExecutor) logTaskEnv(taskInfo *mesos.TaskInfo, labels map[str
 }
 
 // Send task status updates to Mesos via the executor driver
-func (exec *sidecarExecutor) sendStatus(status int64, taskId *mesos.TaskID) {
+func (exec *sidecarExecutor) sendStatus(status int64, taskID *mesos.TaskID) {
 	var mesosStatus *mesos.TaskState
 	switch status {
 	case TaskRunning:
-		mesosStatus = mesos.TaskState_TASK_RUNNING.Enum()
+		mesosStatus = mesos.TASK_RUNNING.Enum()
 	case TaskFinished:
-		mesosStatus = mesos.TaskState_TASK_FINISHED.Enum()
+		mesosStatus = mesos.TASK_FINISHED.Enum()
 	case TaskFailed:
-		mesosStatus = mesos.TaskState_TASK_FAILED.Enum()
+		mesosStatus = mesos.TASK_FAILED.Enum()
 	case TaskKilled:
-		mesosStatus = mesos.TaskState_TASK_KILLED.Enum()
+		mesosStatus = mesos.TASK_KILLED.Enum()
 	}
 
 	update := &mesos.TaskStatus{
-		TaskId: taskId,
+		TaskID: *taskID,
 		State:  mesosStatus,
 	}
 
@@ -222,7 +222,8 @@ func (exec *sidecarExecutor) stopDriver() {
 
 // Tell Mesos and thus the framework that the task finished. Shutdown driver.
 func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
-	exec.sendStatus(TaskFinished, taskInfo.GetTaskId())
+	taskID := taskInfo.GetTaskID()
+	exec.sendStatus(TaskFinished, &taskID)
 
 	// Unfortunately the status updates are sent async and we can't
 	// get a handle on the channel used to send them. So we wait
@@ -233,7 +234,8 @@ func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
 
 // Tell Mesos and thus the framework that the task failed. Shutdown driver.
 func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
-	exec.sendStatus(TaskFailed, taskInfo.GetTaskId())
+	taskID := taskInfo.GetTaskID()
+	exec.sendStatus(TaskFailed, &taskID)
 
 	// Unfortunately the status updates are sent async and we can't
 	// get a handle on the channel used to send them. So we wait

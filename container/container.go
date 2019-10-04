@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/fsouza/go-dockerclient"
-	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
+	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -43,7 +43,7 @@ func CheckImage(client DockerClient, taskInfo *mesos.TaskInfo) bool {
 
 	for _, img := range images {
 		for _, tag := range img.RepoTags {
-			if tag == *taskInfo.Container.Docker.Image {
+			if tag == taskInfo.Container.Docker.Image {
 				// Exact match, we have this image already
 				return true
 			}
@@ -84,10 +84,10 @@ func StopContainer(client DockerClient, containerId string, timeout uint) error 
 // PullImage will pull the Docker image refered to in the taskInfo. Uses the Docker
 // credentials passed in.
 func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker.AuthConfiguration) error {
-	log.Infof("Pulling Docker image '%s'", *taskInfo.Container.Docker.Image)
+	log.Infof("Pulling Docker image '%s'", taskInfo.Container.Docker.Image)
 	err := client.PullImage(
 		docker.PullImageOptions{
-			Repository: *taskInfo.Container.Docker.Image,
+			Repository: taskInfo.Container.Docker.Image,
 		},
 		*authConfig,
 	)
@@ -151,11 +151,11 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 	}
 
 	config := &docker.CreateContainerOptions{
-		Name: GetContainerName(taskInfo.TaskId),
+		Name: GetContainerName(&taskInfo.TaskID),
 		Config: &docker.Config{
 			Env:          EnvForTask(taskInfo, labels, envVars),
 			ExposedPorts: PortsForTask(taskInfo),
-			Image:        *taskInfo.Container.Docker.Image,
+			Image:        taskInfo.Container.Docker.Image,
 			Labels:       labels,
 			Cmd:          command,
 		},
@@ -173,15 +173,15 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 	cpus := getResource("cpus", taskInfo)
 	if cpus != nil && forceCpuLimit {
 		config.HostConfig.CPUPeriod = defaultCpuPeriod
-		config.HostConfig.CPUQuota = int64(*cpus.Scalar.Value * float64(defaultCpuPeriod))
+		config.HostConfig.CPUQuota = int64(cpus.Scalar.Value * float64(defaultCpuPeriod))
 		log.Infof("CPU limit set [HostConfig.CPUQuota=%d, HostConfig.CPUPeriod=%d]  ", config.HostConfig.CPUQuota, defaultCpuPeriod)
 	}
 
 	// Check for and calculate memory limit
 	memory := getResource("mem", taskInfo)
 	if memory != nil && forceMemoryLimit {
-		memoryLimit := int64(*memory.Scalar.Value * float64(1024*1024))
-		log.Infof("Memory limit set to %.0fMB [HostConfig.Memory=%d] ", *memory.Scalar.Value, memoryLimit)
+		memoryLimit := int64(memory.Scalar.Value * float64(1024*1024))
+		log.Infof("Memory limit set to %.0fMB [HostConfig.Memory=%d] ", memory.Scalar.Value, memoryLimit)
 		config.HostConfig.Memory = int64(memoryLimit)
 	}
 
@@ -196,7 +196,7 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 }
 
 // Extract the port protocols. If no protocol is found, default to TCP
-func getPortProtocols(port *mesos.ContainerInfo_DockerInfo_PortMapping) []string {
+func getPortProtocols(port mesos.ContainerInfo_DockerInfo_PortMapping) []string {
 	matches := portProtocolsTokenizer.Split(port.GetProtocol(), -1)
 
 	var protocols []string
@@ -217,12 +217,12 @@ func PortsForTask(taskInfo *mesos.TaskInfo) map[docker.Port]struct{} {
 	ports := make(map[docker.Port]struct{}, len(taskInfo.Container.Docker.PortMappings))
 
 	for _, port := range taskInfo.Container.Docker.PortMappings {
-		if port.ContainerPort == nil {
+		if port.ContainerPort != 0 {
 			continue
 		}
 
 		for _, proto := range getPortProtocols(port) {
-			portStr := docker.Port(strconv.Itoa(int(*port.ContainerPort)) + "/" + proto)
+			portStr := docker.Port(strconv.Itoa(int(port.ContainerPort)) + "/" + proto)
 			ports[portStr] = struct{}{}
 		}
 	}
@@ -234,11 +234,11 @@ func PortsForTask(taskInfo *mesos.TaskInfo) map[docker.Port]struct{} {
 
 func getParams(key string, taskInfo *mesos.TaskInfo) (params []*mesos.Parameter) {
 	for _, param := range taskInfo.Container.Docker.Parameters {
-		if param.Key == nil || *param.Key != key {
+		if param.Key == "" || param.Key != key {
 			continue
 		}
 
-		params = append(params, param)
+		params = append(params, &param)
 	}
 
 	return params
@@ -254,7 +254,7 @@ func getHostname(taskInfo *mesos.TaskInfo) string {
 	}
 
 	for _, envVar := range taskInfo.Executor.Command.Environment.Variables {
-		if *envVar.Name == "TASK_HOST" {
+		if envVar.Name == "TASK_HOST" {
 			return *envVar.Value
 		}
 	}
@@ -273,7 +273,7 @@ func AppendTaskEnv(envVars []string, taskInfo *mesos.TaskInfo) []string {
 	for _, vars := range taskInfo.Executor.Command.Environment.Variables {
 		envVars = append(
 			envVars,
-			fmt.Sprintf("%s=%s", *vars.Name, *vars.Value),
+			fmt.Sprintf("%s=%s", vars.Name, vars.Value),
 		)
 	}
 
@@ -288,7 +288,7 @@ func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string, addEnvVars [
 	envVars = AppendTaskEnv(envVars, taskInfo)
 
 	for _, param := range getParams("env", taskInfo) {
-		envVars = append(envVars, *param.Value)
+		envVars = append(envVars, param.Value)
 	}
 
 	// Add the environment variables generated by the executor config
@@ -298,13 +298,13 @@ func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string, addEnvVars [
 	// lets the container know its externally-facing ports for
 	// purposes of reporting to other services, etc.
 	for _, port := range taskInfo.Container.Docker.PortMappings {
-		if port.ContainerPort == nil || port.HostPort == nil {
+		if port.ContainerPort < 1 || port.HostPort < 1 {
 			continue
 		}
 
 		envVars = append(
 			envVars,
-			fmt.Sprintf("MESOS_PORT_%d=%d", *port.ContainerPort, *port.HostPort),
+			fmt.Sprintf("MESOS_PORT_%d=%d", port.ContainerPort, port.HostPort),
 		)
 	}
 
@@ -323,24 +323,24 @@ func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string, addEnvVars [
 	if svcOk {
 		envVars = append(envVars, "SERVICE_NAME="+svcName)
 	} else {
-		log.Warnf("No ServiceName set for %s", *taskInfo.TaskId.Value)
+		log.Warnf("No ServiceName set for %s", taskInfo.TaskID.Value)
 	}
 
 	if envOk {
 		envVars = append(envVars, "ENVIRONMENT_NAME="+envName)
 	} else {
-		log.Warnf("No EnvironmentName set for %s", *taskInfo.TaskId.Value)
+		log.Warnf("No EnvironmentName set for %s", taskInfo.TaskID.Value)
 	}
 
 	// We parse out and expose the version from the Docker tag as well
-	if taskInfo.Container == nil || taskInfo.Container.Docker == nil || taskInfo.Container.Docker.Image == nil {
-		log.Warnf("Unable to extract version from Docker image for %s", taskInfo.TaskId)
+	if taskInfo.Container == nil || taskInfo.Container.Docker == nil || taskInfo.Container.Docker.Image == "" {
+		log.Warnf("Unable to extract version from Docker image for %s", taskInfo.TaskID)
 		return envVars
 	}
 
-	versionParts := strings.Split(*taskInfo.Container.Docker.Image, ":")
+	versionParts := strings.Split(taskInfo.Container.Docker.Image, ":")
 	if len(versionParts) < 2 {
-		log.Warnf("Unable to extract version from Docker image for %s", taskInfo.TaskId)
+		log.Warnf("Unable to extract version from Docker image for %s", taskInfo.TaskID)
 		return envVars
 	}
 
@@ -354,9 +354,9 @@ func LabelsForTask(taskInfo *mesos.TaskInfo) map[string]string {
 	labels := make(map[string]string, len(taskInfo.Container.Docker.Parameters))
 
 	for _, param := range getParams("label", taskInfo) {
-		values := strings.SplitN(*param.Value, "=", 2)
+		values := strings.SplitN(param.Value, "=", 2)
 		if len(values) < 2 {
-			log.Debugf("Got label with empty value: %s", *param.Key)
+			log.Debugf("Got label with empty value: %s", param.Key)
 			continue // No empty labels
 		}
 		labels[values[0]] = values[1]
@@ -369,10 +369,10 @@ func LabelsForTask(taskInfo *mesos.TaskInfo) map[string]string {
 func BindsForTask(taskInfo *mesos.TaskInfo) []string {
 	var binds []string
 	for _, binding := range taskInfo.Container.Volumes {
-		if binding.Mode != nil && *binding.Mode != mesos.Volume_RW {
-			binds = append(binds, fmt.Sprintf("%s:%s:ro", *binding.HostPath, *binding.ContainerPath))
+		if binding.Mode != nil && *binding.Mode != mesos.RW {
+			binds = append(binds, fmt.Sprintf("%s:%s:ro", binding.HostPath, binding.ContainerPath))
 		} else {
-			binds = append(binds, fmt.Sprintf("%s:%s", *binding.HostPath, *binding.ContainerPath))
+			binds = append(binds, fmt.Sprintf("%s:%s", binding.HostPath, binding.ContainerPath))
 		}
 	}
 
@@ -386,14 +386,14 @@ func PortBindingsForTask(taskInfo *mesos.TaskInfo) map[docker.Port][]docker.Port
 	portBinds := make(map[docker.Port][]docker.PortBinding, len(taskInfo.Container.Docker.PortMappings))
 
 	for _, port := range taskInfo.Container.Docker.PortMappings {
-		if port.HostPort == nil {
+		if port.HostPort < 1 {
 			continue
 		}
 
 		for _, proto := range getPortProtocols(port) {
-			portBinds[docker.Port(strconv.Itoa(int(*port.ContainerPort))+"/"+proto)] =
+			portBinds[docker.Port(strconv.Itoa(int(port.ContainerPort))+"/"+proto)] =
 				[]docker.PortBinding{
-					{HostPort: strconv.Itoa(int(*port.HostPort))},
+					{HostPort: strconv.Itoa(int(port.HostPort))},
 				}
 		}
 	}
@@ -407,7 +407,7 @@ func PortBindingsForTask(taskInfo *mesos.TaskInfo) map[docker.Port][]docker.Port
 func CapAddForTask(taskInfo *mesos.TaskInfo) []string {
 	var params []string
 	for _, param := range getParams("cap-add", taskInfo) {
-		params = append(params, *param.Value)
+		params = append(params, param.Value)
 	}
 	return params
 }
@@ -416,7 +416,7 @@ func CapAddForTask(taskInfo *mesos.TaskInfo) []string {
 func CapDropForTask(taskInfo *mesos.TaskInfo) []string {
 	var params []string
 	for _, param := range getParams("cap-drop", taskInfo) {
-		params = append(params, *param.Value)
+		params = append(params, param.Value)
 	}
 	return params
 }
@@ -426,7 +426,7 @@ func VolumeDriverForTask(taskInfo *mesos.TaskInfo) string {
 	var volumeDriver string
 
 	for _, param := range getParams("volume-driver", taskInfo) {
-		volumeDriver = *param.Value
+		volumeDriver = param.Value
 	}
 
 	return volumeDriver
@@ -453,8 +453,8 @@ func NetworkForTask(taskInfo *mesos.TaskInfo) string {
 // Loop through the resource slice and return the named resource
 func getResource(name string, taskInfo *mesos.TaskInfo) *mesos.Resource {
 	for _, resource := range taskInfo.Resources {
-		if *resource.Name == name {
-			return resource
+		if resource.Name == name {
+			return &resource
 		}
 	}
 
@@ -466,8 +466,8 @@ func getResource(name string, taskInfo *mesos.TaskInfo) *mesos.Resource {
 const DockerNamePrefix = "mesos-"
 
 func GetContainerName(taskId *mesos.TaskID) string {
-	// unique uuid based on the TaskId
-	containerUUID := uuid.NewSHA1(uuid.NIL, []byte(*taskId.Value))
+	// unique uuid based on the TaskID
+	containerUUID := uuid.NewSHA1(uuid.NIL, []byte(taskId.Value))
 	return DockerNamePrefix + containerUUID.String()
 }
 

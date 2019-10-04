@@ -15,7 +15,7 @@ import (
 
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/fsouza/go-dockerclient"
-	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
+	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/relistan/go-director"
 	log "github.com/sirupsen/logrus"
 	. "github.com/smartystreets/goconvey/convey"
