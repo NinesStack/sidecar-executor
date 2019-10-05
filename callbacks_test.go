@@ -417,7 +417,6 @@ func Test_ExecutorCallbacks(t *testing.T) {
 				So(sidecarStateCalls, ShouldEqual, 1)
 			})
 
-
 			Convey("fails to launch a task", func() {
 				Convey("when it fails to pull an image", func() {
 					dummyDockerClient.PullImageShouldError = true
