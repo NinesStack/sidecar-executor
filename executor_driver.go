@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/url"
 	"time"
@@ -182,7 +183,7 @@ func (exec *sidecarExecutor) StopDriver() {
 }
 
 // RunDriver runs the main event loop for the executor
-func (exec *sidecarExecutor) RunDriver(mesosConfig *config.Config) {
+func (exec *sidecarExecutor) RunDriver(mesosConfig *config.Config) error {
 	agentApiUrl := url.URL{
 		Scheme: "http",
 		Host:   mesosConfig.AgentEndpoint,
@@ -256,20 +257,19 @@ func (exec *sidecarExecutor) RunDriver(mesosConfig *config.Config) {
 
 		if driver.shouldQuit {
 			log.Info("Shutting down gracefully because we were told to")
-			return
+			return nil
 		}
 
 		if !mesosConfig.Checkpoint {
 			log.Info("Exiting gracefully because framework checkpointing is NOT enabled")
-			return
+			return nil
 		}
 
 		if time.Now().Sub(disconnectTime) > mesosConfig.RecoveryTimeout {
-			log.Errorf(
+			return fmt.Errorf(
 				"Failed to re-establish subscription with agent within %v, aborting",
 				mesosConfig.RecoveryTimeout,
 			)
-			return
 		}
 
 		log.Info("Waiting for reconnect timeout")

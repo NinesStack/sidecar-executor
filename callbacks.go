@@ -104,11 +104,11 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 func (exec *sidecarExecutor) KillTask(taskID *mesos.TaskID) {
 	log.Infof("Killing task: %s", taskID.Value)
 
-	// Instruct Sidecar to set the status of the service to DRAINING
-	exec.notifyDrain()
-
 	// Stop watching the container so we don't send the wrong task status
 	go func() { exec.watchLooper.Quit() }()
+
+	// Instruct Sidecar to set the status of the service to DRAINING
+	exec.notifyDrain()
 
 	containerName := container.GetContainerName(taskID)
 
@@ -137,6 +137,7 @@ func (exec *sidecarExecutor) KillTask(taskID *mesos.TaskID) {
 	if !exec.config.ContainerLogsStdout {
 		exec.copyLogs(containerName)
 	}
+
 	// Notify Mesos
 	exec.sendStatus(status, taskID)
 
