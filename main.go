@@ -243,7 +243,9 @@ func main() {
 
 	log.Info("Executor process has started")
 
-	err = scExec.RunDriver(&cfg)
+	scExec.driver = NewExecutorDriver(&cfg, scExec)
+	err = scExec.driver.Run()
+
 	if err != nil {
 		log.Errorf("EXITING: Error from executor driver: %s", err)
 		return

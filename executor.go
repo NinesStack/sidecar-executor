@@ -33,7 +33,7 @@ type sidecarExecutor struct {
 	// Populated during LaunchTask
 	containerConfig *docker.CreateContainerOptions
 	containerID     string
-	driver          *executorDriver
+	driver          *ExecutorDriver
 }
 
 func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfiguration, config Config) *sidecarExecutor {

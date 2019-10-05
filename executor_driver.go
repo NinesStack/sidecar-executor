@@ -27,9 +27,17 @@ const (
 	httpTimeout  = 10 * time.Second
 )
 
-type executorDriver struct {
+// A TaskDelegate is responsible for launching and killing tasks
+type TaskDelegate interface {
+	LaunchTask(taskInfo *mesos.TaskInfo)
+	KillTask(taskID *mesos.TaskID)
+}
+
+// The ExecutorDriver does all the work of interacting with Mesos and the Agent
+// and calls back to the TaskDelegate to handle starting and stopping tasks.
+type ExecutorDriver struct {
 	cli            calls.Sender
-	cfg            config.Config
+	cfg            *config.Config
 	framework      mesos.FrameworkInfo
 	executor       mesos.ExecutorInfo
 	agent          mesos.AgentInfo
@@ -37,48 +45,49 @@ type executorDriver struct {
 	unackedUpdates map[string]executor.Call_Update
 	failedTasks    map[mesos.TaskID]mesos.TaskStatus // send updates for these as we can
 	shouldQuit     bool
+	subscriber     calls.SenderFunc
 
-	scExec *sidecarExecutor
+	delegate TaskDelegate
 }
 
-func maybeReconnect(cfg *config.Config) <-chan struct{} {
-	if cfg.Checkpoint {
-		return backoff.Notifier(1*time.Second, cfg.SubscriptionBackoffMax*3/4, nil)
+func (driver *ExecutorDriver) maybeReconnect() <-chan struct{} {
+	if driver.cfg.Checkpoint {
+		return backoff.Notifier(1*time.Second, driver.cfg.SubscriptionBackoffMax*3/4, nil)
 	}
 	return nil
 }
 
 // unacknowledgedTasks generates the value of the UnacknowledgedTasks field of a Subscribe call.
-func (state *executorDriver) unacknowledgedTasks() (result []mesos.TaskInfo) {
-	if n := len(state.unackedTasks); n > 0 {
+func (driver *ExecutorDriver) unacknowledgedTasks() (result []mesos.TaskInfo) {
+	if n := len(driver.unackedTasks); n > 0 {
 		result = make([]mesos.TaskInfo, 0, n)
-		for k := range state.unackedTasks {
-			result = append(result, state.unackedTasks[k])
+		for k := range driver.unackedTasks {
+			result = append(result, driver.unackedTasks[k])
 		}
 	}
 	return
 }
 
 // unacknowledgedUpdates generates the value of the UnacknowledgedUpdates field of a Subscribe call.
-func (state *executorDriver) unacknowledgedUpdates() (result []executor.Call_Update) {
-	if n := len(state.unackedUpdates); n > 0 {
+func (driver *ExecutorDriver) unacknowledgedUpdates() (result []executor.Call_Update) {
+	if n := len(driver.unackedUpdates); n > 0 {
 		result = make([]executor.Call_Update, 0, n)
-		for k := range state.unackedUpdates {
-			result = append(result, state.unackedUpdates[k])
+		for k := range driver.unackedUpdates {
+			result = append(result, driver.unackedUpdates[k])
 		}
 	}
 	return
 }
 
-func (state *executorDriver) eventLoop(decoder encoding.Decoder,
+func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 	h events.Handler) (err error) {
 
 	log.Info("Listening for events from agent")
 	ctx := context.TODO()
 
-	for err == nil && !state.shouldQuit {
+	for err == nil && !driver.shouldQuit {
 		// housekeeping
-		state.sendFailedTasks()
+		driver.sendFailedTasks()
 
 		var e executor.Event
 		if err = decoder.Decode(&e); err == nil {
@@ -88,30 +97,30 @@ func (state *executorDriver) eventLoop(decoder encoding.Decoder,
 	return err
 }
 
-func (state *executorDriver) buildEventHandler() events.Handler {
+func (driver *ExecutorDriver) buildEventHandler() events.Handler {
 	return events.HandlerFuncs{
 		executor.Event_SUBSCRIBED: func(_ context.Context, e *executor.Event) error {
 			log.Info("Executor subscribed to events")
-			state.framework = e.Subscribed.FrameworkInfo
-			state.executor = e.Subscribed.ExecutorInfo
-			state.agent = e.Subscribed.AgentInfo
+			driver.framework = e.Subscribed.FrameworkInfo
+			driver.executor = e.Subscribed.ExecutorInfo
+			driver.agent = e.Subscribed.AgentInfo
 			return nil
 		},
 
 		executor.Event_LAUNCH: func(_ context.Context, e *executor.Event) error {
-			state.unackedTasks[e.Launch.Task.TaskID] = e.Launch.Task
-			state.scExec.LaunchTask(&e.Launch.Task)
+			driver.unackedTasks[e.Launch.Task.TaskID] = e.Launch.Task
+			driver.delegate.LaunchTask(&e.Launch.Task)
 			return nil
 		},
 
 		executor.Event_KILL: func(_ context.Context, e *executor.Event) error {
-			state.scExec.KillTask(&e.Kill.TaskID)
+			driver.delegate.KillTask(&e.Kill.TaskID)
 			return nil
 		},
 
 		executor.Event_ACKNOWLEDGED: func(_ context.Context, e *executor.Event) error {
-			delete(state.unackedTasks, e.Acknowledged.TaskID)
-			delete(state.unackedUpdates, string(e.Acknowledged.UUID))
+			delete(driver.unackedTasks, e.Acknowledged.TaskID)
+			delete(driver.unackedUpdates, string(e.Acknowledged.UUID))
 			return nil
 		},
 
@@ -122,7 +131,7 @@ func (state *executorDriver) buildEventHandler() events.Handler {
 
 		executor.Event_SHUTDOWN: func(_ context.Context, e *executor.Event) error {
 			log.Info("Shutting down the executor")
-			state.shouldQuit = true
+			driver.shouldQuit = true
 			return nil
 		},
 
@@ -139,23 +148,23 @@ func (state *executorDriver) buildEventHandler() events.Handler {
 	})
 }
 
-func (state *executorDriver) sendFailedTasks() {
-	for taskID, status := range state.failedTasks {
-		updateErr := state.SendStatusUpdate(status)
+func (driver *ExecutorDriver) sendFailedTasks() {
+	for taskID, status := range driver.failedTasks {
+		updateErr := driver.SendStatusUpdate(status)
 		if updateErr != nil {
 			log.Warnf(
 				"failed to send status update for task %s: %+v", taskID.Value, updateErr,
 			)
 		} else {
-			delete(state.failedTasks, taskID)
+			delete(driver.failedTasks, taskID)
 		}
 	}
 }
 
 // SendStatusUpdate takes a new Mesos status and relays it to the agent
-func (state *executorDriver) SendStatusUpdate(status mesos.TaskStatus) error {
+func (driver *ExecutorDriver) SendStatusUpdate(status mesos.TaskStatus) error {
 	upd := calls.Update(status)
-	resp, err := state.cli.Send(context.TODO(), calls.NonStreaming(upd))
+	resp, err := driver.cli.Send(context.TODO(), calls.NonStreaming(upd))
 	if resp != nil {
 		resp.Close()
 	}
@@ -163,16 +172,16 @@ func (state *executorDriver) SendStatusUpdate(status mesos.TaskStatus) error {
 		log.Errorf("failed to send update: %+v", err)
 		logDebugJSON(upd)
 	} else {
-		state.unackedUpdates[string(status.UUID)] = *upd.Update
+		driver.unackedUpdates[string(status.UUID)] = *upd.Update
 	}
 	return err
 }
 
-func (state *executorDriver) newStatus(id mesos.TaskID) mesos.TaskStatus {
+func (driver *ExecutorDriver) newStatus(id mesos.TaskID) mesos.TaskStatus {
 	return mesos.TaskStatus{
 		TaskID:     id,
 		Source:     mesos.SOURCE_EXECUTOR.Enum(),
-		ExecutorID: &state.executor.ExecutorID,
+		ExecutorID: &driver.executor.ExecutorID,
 		UUID:       []byte(uuid.NewRandom()),
 	}
 }
@@ -182,8 +191,8 @@ func (exec *sidecarExecutor) StopDriver() {
 	exec.driver.shouldQuit = true
 }
 
-// RunDriver runs the main event loop for the executor
-func (exec *sidecarExecutor) RunDriver(mesosConfig *config.Config) error {
+// NewExecutorDriver returns a properly configured ExecutorDriver
+func NewExecutorDriver(mesosConfig *config.Config, delegate TaskDelegate) *ExecutorDriver {
 	agentApiUrl := url.URL{
 		Scheme: "http",
 		Host:   mesosConfig.AgentEndpoint,
@@ -201,7 +210,7 @@ func (exec *sidecarExecutor) RunDriver(mesosConfig *config.Config) error {
 		calls.Executor(mesosConfig.ExecutorID),
 	}
 
-	driver := &executorDriver{
+	driver := &ExecutorDriver{
 		cli: calls.SenderWith(
 			httpexec.NewSender(http.Send),
 			callOptions...,
@@ -209,17 +218,22 @@ func (exec *sidecarExecutor) RunDriver(mesosConfig *config.Config) error {
 		unackedTasks:   make(map[mesos.TaskID]mesos.TaskInfo),
 		unackedUpdates: make(map[string]executor.Call_Update),
 		failedTasks:    make(map[mesos.TaskID]mesos.TaskStatus),
-		scExec:         exec,
+		delegate:       delegate,
+		cfg:            mesosConfig,
 	}
 
-	exec.driver = driver
-
-	subscriber := calls.SenderWith(
+	driver.subscriber = calls.SenderWith(
 		httpexec.NewSender(http.Send, httpcli.Close(true)),
 		callOptions...,
 	)
 
-	shouldReconnect := maybeReconnect(mesosConfig)
+	return driver
+}
+
+// RunDriver runs the main event loop for the executor
+func (driver *ExecutorDriver) Run() error {
+	shouldReconnect := driver.maybeReconnect()
+
 	disconnectTime := time.Now()
 	handler := driver.buildEventHandler()
 
@@ -233,7 +247,11 @@ func (exec *sidecarExecutor) RunDriver(mesosConfig *config.Config) error {
 
 			log.Info("Subscribing to agent for events")
 
-			resp, err := subscriber.Send(context.TODO(), calls.NonStreaming(subscribe))
+			resp, err := driver.subscriber.Send(
+				context.TODO(),
+				calls.NonStreaming(subscribe),
+			)
+
 			if resp != nil {
 				defer resp.Close()
 			}
@@ -252,7 +270,7 @@ func (exec *sidecarExecutor) RunDriver(mesosConfig *config.Config) error {
 				return
 			}
 
-			log.Info("Disconnected")
+			log.Info("Disconnected from Agent")
 		}()
 
 		if driver.shouldQuit {
@@ -260,15 +278,15 @@ func (exec *sidecarExecutor) RunDriver(mesosConfig *config.Config) error {
 			return nil
 		}
 
-		if !mesosConfig.Checkpoint {
+		if !driver.cfg.Checkpoint {
 			log.Info("Exiting gracefully because framework checkpointing is NOT enabled")
 			return nil
 		}
 
-		if time.Now().Sub(disconnectTime) > mesosConfig.RecoveryTimeout {
+		if time.Now().Sub(disconnectTime) > driver.cfg.RecoveryTimeout {
 			return fmt.Errorf(
 				"Failed to re-establish subscription with agent within %v, aborting",
-				mesosConfig.RecoveryTimeout,
+				driver.cfg.RecoveryTimeout,
 			)
 		}
 
