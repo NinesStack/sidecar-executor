@@ -36,6 +36,8 @@ type executorDriver struct {
 	unackedUpdates map[string]executor.Call_Update
 	failedTasks    map[mesos.TaskID]mesos.TaskStatus // send updates for these as we can
 	shouldQuit     bool
+
+	scExec *sidecarExecutor
 }
 
 func maybeReconnect(cfg *config.Config) <-chan struct{} {
@@ -88,7 +90,7 @@ func (state *executorDriver) eventLoop(decoder encoding.Decoder,
 func (state *executorDriver) buildEventHandler() events.Handler {
 	return events.HandlerFuncs{
 		executor.Event_SUBSCRIBED: func(_ context.Context, e *executor.Event) error {
-			log.Info("SUBSCRIBED")
+			log.Info("Executor subscribed to events")
 			state.framework = e.Subscribed.FrameworkInfo
 			state.executor = e.Subscribed.ExecutorInfo
 			state.agent = e.Subscribed.AgentInfo
@@ -96,12 +98,13 @@ func (state *executorDriver) buildEventHandler() events.Handler {
 		},
 
 		executor.Event_LAUNCH: func(_ context.Context, e *executor.Event) error {
-			state.launch(e.Launch.Task)
+			state.unackedTasks[e.Launch.Task.TaskID] = e.Launch.Task
+			state.scExec.LaunchTask(&e.Launch.Task)
 			return nil
 		},
 
 		executor.Event_KILL: func(_ context.Context, e *executor.Event) error {
-			log.Warn("Warning: KILL not implemented")
+			state.scExec.KillTask(&e.Kill.TaskID)
 			return nil
 		},
 
@@ -117,7 +120,7 @@ func (state *executorDriver) buildEventHandler() events.Handler {
 		},
 
 		executor.Event_SHUTDOWN: func(_ context.Context, e *executor.Event) error {
-			log.Info("SHUTDOWN received")
+			log.Info("Shutting down the executor")
 			state.shouldQuit = true
 			return nil
 		},
@@ -148,38 +151,6 @@ func (state *executorDriver) sendFailedTasks() {
 	}
 }
 
-func (state *executorDriver) launch(task mesos.TaskInfo) {
-	state.unackedTasks[task.TaskID] = task
-
-	// send RUNNING
-	status := state.newStatus(task.TaskID)
-	status.State = mesos.TASK_RUNNING.Enum()
-	err := state.SendStatusUpdate(status)
-	if err != nil {
-		log.Warnf("failed to send TASK_RUNNING for task %s: %+v", task.TaskID.Value, err)
-		status.State = mesos.TASK_FAILED.Enum()
-		status.Message = protoString(err.Error())
-		state.failedTasks[task.TaskID] = status
-		return
-	}
-
-	// send FINISHED
-	status = state.newStatus(task.TaskID)
-	status.State = mesos.TASK_FINISHED.Enum()
-	err = state.SendStatusUpdate(status)
-	if err != nil {
-		log.Warnf("failed to send TASK_FINISHED for task %s: %+v", task.TaskID.Value, err)
-		status.State = mesos.TASK_FAILED.Enum()
-		status.Message = protoString(err.Error())
-		state.failedTasks[task.TaskID] = status
-	}
-}
-
-// protoStrings is a helper func to package strings up nicely for protobuf.
-// If we need any more proto funcs like this, just import the proto
-// package and use those.
-func protoString(s string) *string { return &s }
-
 // SendStatusUpdate takes a new Mesos status and relays it to the agent
 func (state *executorDriver) SendStatusUpdate(status mesos.TaskStatus) error {
 	upd := calls.Update(status)
@@ -203,6 +174,11 @@ func (state *executorDriver) newStatus(id mesos.TaskID) mesos.TaskStatus {
 		ExecutorID: &state.executor.ExecutorID,
 		UUID:       []byte(uuid.NewRandom()),
 	}
+}
+
+// StopDriver flags the event loop to exit on the next time around
+func (exec *sidecarExecutor) StopDriver() {
+	exec.driver.shouldQuit = true
 }
 
 // RunDriver runs the main event loop for the executor
@@ -232,6 +208,7 @@ func (exec *sidecarExecutor) RunDriver(mesosConfig *config.Config) {
 		unackedTasks:   make(map[mesos.TaskID]mesos.TaskInfo),
 		unackedUpdates: make(map[string]executor.Call_Update),
 		failedTasks:    make(map[mesos.TaskID]mesos.TaskStatus),
+		scExec:         exec,
 	}
 
 	exec.driver = driver

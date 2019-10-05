@@ -217,7 +217,7 @@ func PortsForTask(taskInfo *mesos.TaskInfo) map[docker.Port]struct{} {
 	ports := make(map[docker.Port]struct{}, len(taskInfo.Container.Docker.PortMappings))
 
 	for _, port := range taskInfo.Container.Docker.PortMappings {
-		if port.ContainerPort != 0 {
+		if port.ContainerPort == 0 {
 			continue
 		}
 
@@ -232,13 +232,14 @@ func PortsForTask(taskInfo *mesos.TaskInfo) map[docker.Port]struct{} {
 	return ports
 }
 
-func getParams(key string, taskInfo *mesos.TaskInfo) (params []*mesos.Parameter) {
+// getParams fetches items by key from the Docker.Parameters slice
+func getParams(key string, taskInfo *mesos.TaskInfo) (params []mesos.Parameter) {
 	for _, param := range taskInfo.Container.Docker.Parameters {
 		if param.Key == "" || param.Key != key {
 			continue
 		}
 
-		params = append(params, &param)
+		params = append(params, param)
 	}
 
 	return params
@@ -273,18 +274,23 @@ func AppendTaskEnv(envVars []string, taskInfo *mesos.TaskInfo) []string {
 	for _, vars := range taskInfo.Executor.Command.Environment.Variables {
 		envVars = append(
 			envVars,
-			fmt.Sprintf("%s=%s", vars.Name, vars.Value),
+			fmt.Sprintf("%s=%s", vars.Name, *vars.Value),
 		)
 	}
 
 	return envVars
 }
 
-// Map Mesos environment settings to Docker environment (-e FOO=BAR)
-func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string, addEnvVars []string) []string {
+// Map Mesos environment settings to Docker environment (-e FOO=BAR). Adds a few
+// environment variables derived from the labels we were passed, as well. Useful
+// for services in containers to know more about their environment.
+func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string,
+	addEnvVars []string) []string {
+
 	var envVars []string
 
-	// Add Task env as Docker Envs (TASK_ID, TASK_DEPLOY_ID, TASK_RACK_ID, TASK_REQUEST_ID, ...)
+	// Add Task env as Docker Envs (TASK_ID, TASK_DEPLOY_ID, TASK_RACK_ID,
+	// TASK_REQUEST_ID, ...)
 	envVars = AppendTaskEnv(envVars, taskInfo)
 
 	for _, param := range getParams("env", taskInfo) {
@@ -349,7 +355,7 @@ func EnvForTask(taskInfo *mesos.TaskInfo, labels map[string]string, addEnvVars [
 	return envVars
 }
 
-// Map Mesos parameter lables to Docker labels
+// LabelsForTask maps Mesos parameter lables to Docker labels
 func LabelsForTask(taskInfo *mesos.TaskInfo) map[string]string {
 	labels := make(map[string]string, len(taskInfo.Container.Docker.Parameters))
 
@@ -365,14 +371,15 @@ func LabelsForTask(taskInfo *mesos.TaskInfo) map[string]string {
 	return labels
 }
 
-// Mesos volume information to Docker volume binds at runtime (equivalent to -v)
+// BindsForTask turns Mesos volume information to Docker volume binds at runtime
+// (equivalent to -v)
 func BindsForTask(taskInfo *mesos.TaskInfo) []string {
 	var binds []string
 	for _, binding := range taskInfo.Container.Volumes {
 		if binding.Mode != nil && *binding.Mode != mesos.RW {
-			binds = append(binds, fmt.Sprintf("%s:%s:ro", binding.HostPath, binding.ContainerPath))
+			binds = append(binds, fmt.Sprintf("%s:%s:ro", *binding.HostPath, binding.ContainerPath))
 		} else {
-			binds = append(binds, fmt.Sprintf("%s:%s", binding.HostPath, binding.ContainerPath))
+			binds = append(binds, fmt.Sprintf("%s:%s", *binding.HostPath, binding.ContainerPath))
 		}
 	}
 
@@ -381,7 +388,8 @@ func BindsForTask(taskInfo *mesos.TaskInfo) []string {
 	return binds
 }
 
-// The actual ports bound to this container, nost just EXPOSEd (equivalent to -P)
+// PortBindingsForTask returns the actual ports bound to this container, not
+// just EXPOSEd (equivalent to -P)
 func PortBindingsForTask(taskInfo *mesos.TaskInfo) map[docker.Port][]docker.PortBinding {
 	portBinds := make(map[docker.Port][]docker.PortBinding, len(taskInfo.Container.Docker.PortMappings))
 
@@ -403,7 +411,7 @@ func PortBindingsForTask(taskInfo *mesos.TaskInfo) map[docker.Port][]docker.Port
 	return portBinds
 }
 
-// Scan for cap-adds and generate string slice
+// CapAddForTask scans for cap-adds and generate string slice
 func CapAddForTask(taskInfo *mesos.TaskInfo) []string {
 	var params []string
 	for _, param := range getParams("cap-add", taskInfo) {
@@ -412,7 +420,7 @@ func CapAddForTask(taskInfo *mesos.TaskInfo) []string {
 	return params
 }
 
-// Scan for cap-drops and generate string slice
+// CapDropForTask scans for cap-drops and generate string slice
 func CapDropForTask(taskInfo *mesos.TaskInfo) []string {
 	var params []string
 	for _, param := range getParams("cap-drop", taskInfo) {
@@ -421,10 +429,12 @@ func CapDropForTask(taskInfo *mesos.TaskInfo) []string {
 	return params
 }
 
-// Scan for volume-driver
+// VolumeDriverForTask scans for volume-driver
 func VolumeDriverForTask(taskInfo *mesos.TaskInfo) string {
 	var volumeDriver string
 
+	// This should only occur once, but can be set more than once
+	// so we just take the last occurrence
 	for _, param := range getParams("volume-driver", taskInfo) {
 		volumeDriver = param.Value
 	}
@@ -432,7 +442,7 @@ func VolumeDriverForTask(taskInfo *mesos.TaskInfo) string {
 	return volumeDriver
 }
 
-// Map Mesos enum to strings for Docker
+// NetworkForTask maps Mesos enum to strings for Docker
 func NetworkForTask(taskInfo *mesos.TaskInfo) string {
 	var networkMode string
 
@@ -450,7 +460,7 @@ func NetworkForTask(taskInfo *mesos.TaskInfo) string {
 	return networkMode
 }
 
-// Loop through the resource slice and return the named resource
+// getResource loops through the resource slice and return the named resource
 func getResource(name string, taskInfo *mesos.TaskInfo) *mesos.Resource {
 	for _, resource := range taskInfo.Resources {
 		if resource.Name == name {
@@ -465,12 +475,16 @@ func getResource(name string, taskInfo *mesos.TaskInfo) *mesos.Resource {
 // created by Mesos from those created manually.
 const DockerNamePrefix = "mesos-"
 
+// GetContainerName constructs a Mesos-friendly container name. This lets Mesos
+// properly handle agent/master resolution without us.
 func GetContainerName(taskId *mesos.TaskID) string {
 	// unique uuid based on the TaskID
 	containerUUID := uuid.NewSHA1(uuid.NIL, []byte(taskId.Value))
 	return DockerNamePrefix + containerUUID.String()
 }
 
+// GetExitCode returns the exit code for a container so that we can try to see
+// how it exited and map that to a Mesos status.
 func GetExitCode(client DockerClient, containerId string) (int, error) {
 	inspect, err := client.InspectContainer(containerId)
 	if err != nil {

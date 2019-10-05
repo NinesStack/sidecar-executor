@@ -4,27 +4,10 @@ import (
 	"time"
 
 	"github.com/Nitro/sidecar-executor/container"
-	"github.com/mesos/mesos-go/api/v0/executor"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/relistan/go-director"
 	log "github.com/sirupsen/logrus"
 )
-
-// Callbacks from the Mesos driver. These are required to implement
-// the Executor interface.
-
-func (exec *sidecarExecutor) Registered(driver executor.ExecutorDriver,
-	execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, agentInfo *mesos.AgentInfo) {
-	log.Info("Registered Executor on slave ", agentInfo.GetHostname())
-}
-
-func (exec *sidecarExecutor) Reregistered(driver executor.ExecutorDriver, agentInfo *mesos.AgentInfo) {
-	log.Info("Re-registered Executor on slave ", agentInfo.GetHostname())
-}
-
-func (exec *sidecarExecutor) Disconnected(driver executor.ExecutorDriver) {
-	log.Info("Executor disconnected.")
-}
 
 // LaunchTask is a callback from Mesos driver to launch a new task in this
 // executor.
@@ -118,7 +101,7 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 
 // KillTask is a Mesos callback that will try very hard to kill off a running
 // task/container.
-func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *mesosproto.TaskID) {
+func (exec *sidecarExecutor) KillTask(taskID *mesos.TaskID) {
 	log.Infof("Killing task: %s", taskID.Value)
 
 	// Instruct Sidecar to set the status of the service to DRAINING
@@ -162,17 +145,5 @@ func (exec *sidecarExecutor) KillTask(driver executor.ExecutorDriver, taskID *me
 
 	log.Info("Executor believes container has exited, stopping Mesos driver")
 
-	exec.stopDriver()
-}
-
-func (exec *sidecarExecutor) FrameworkMessage(driver executor.ExecutorDriver, msg string) {
-	log.Info("Got framework message: ", msg)
-}
-
-func (exec *sidecarExecutor) Shutdown(driver executor.ExecutorDriver) {
-	log.Info("Shutting down the executor")
-}
-
-func (exec *sidecarExecutor) Error(driver executor.ExecutorDriver, err string) {
-	log.Info("Got error message:", err)
+	exec.StopDriver()
 }

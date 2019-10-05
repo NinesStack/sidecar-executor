@@ -204,17 +204,6 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskID *mesos.TaskID) {
 	}
 }
 
-func (exec *sidecarExecutor) stopDriver() {
-	//	if !exec.driver.Running() {
-	//		return
-	//	}
-	//
-	//	_, err := exec.driver.Stop()
-	//	if err != nil {
-	//		log.Errorf("Error stopping mesos driver: %s", err)
-	//	}
-}
-
 // Tell Mesos and thus the framework that the task finished. Shutdown driver.
 func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
 	taskID := taskInfo.GetTaskID()
@@ -224,7 +213,7 @@ func (exec *sidecarExecutor) finishTask(taskInfo *mesos.TaskInfo) {
 	// get a handle on the channel used to send them. So we wait
 	time.Sleep(exec.statusSleepTime)
 
-	exec.stopDriver()
+	exec.StopDriver()
 }
 
 // Tell Mesos and thus the framework that the task failed. Shutdown driver.
@@ -236,7 +225,7 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 	// get a handle on the channel used to send them. So we wait
 	time.Sleep(exec.statusSleepTime)
 
-	exec.stopDriver()
+	exec.StopDriver()
 }
 
 // Loop on a timed basis and check the health of the process in Sidecar.
