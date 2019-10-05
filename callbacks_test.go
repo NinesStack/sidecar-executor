@@ -16,6 +16,7 @@ import (
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/pborman/uuid"
+	director "github.com/relistan/go-director"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -47,6 +48,7 @@ func Test_shouldCheckSidecar(t *testing.T) {
 type mockMesosDriver struct {
 	messages       map[string]*mesos.TaskStatus
 	receivedUpdate *mesos.TaskStatus
+	isStopped      bool
 }
 
 func (d *mockMesosDriver) NewStatus(id mesos.TaskID) mesos.TaskStatus {
@@ -68,7 +70,7 @@ func (d *mockMesosDriver) Run() error {
 }
 
 func (d *mockMesosDriver) Stop() {
-
+	d.isStopped = true
 }
 
 //
@@ -301,215 +303,211 @@ func Test_ExecutorCallbacks(t *testing.T) {
 				})
 
 			})
+
+			Convey("and seeds sidecar", func() {
+				exec.config.SeedSidecar = true
+				err := os.Setenv("MESOS_AGENT_ENDPOINT", fakeServer.Listener.Addr().String())
+				So(err, ShouldBeNil)
+				defer os.Unsetenv("MESOS_AGENT_ENDPOINT")
+
+				exec.LaunchTask(&taskInfo)
+
+				So(exec.containerConfig.Config.Env, ShouldContain, "SIDECAR_SEEDS="+dummyMesosWorkerHost)
+			})
+
+			Convey("and initialises the container config", func() {
+				envKey := "env"
+				extraEnvVal := "TEST_VAR=dummy_value"
+				taskInfo.Container.Docker.Parameters = append(
+					taskInfo.Container.Docker.Parameters,
+					mesos.Parameter{Key: envKey, Value: extraEnvVal},
+				)
+
+				exec.LaunchTask(&taskInfo)
+
+				Convey("and pulls image", func() {
+					So(dummyDockerClient.ValidOptions, ShouldBeTrue)
+				})
+
+				Convey("and sets the container config on the executor", func() {
+					So(exec.containerConfig, ShouldNotBeNil)
+					So(exec.containerConfig.Name, ShouldEqual, expectedContainerId)
+				})
+
+				Convey("and sets the container ID on the executor", func() {
+					So(exec.containerID, ShouldEqual, expectedContainerId)
+				})
+
+				Convey("and appends the task env vars", func() {
+					So(exec.containerConfig.Config.Env, ShouldContain, "SERVICE_VERSION="+dummyDockerImageTag)
+					So(exec.containerConfig.Config.Env, ShouldContain, taskID+"="+dummyTaskIDValue)
+					So(exec.containerConfig.Config.Env, ShouldContain, taskHost+"="+dummyTaskHost)
+				})
+
+				Convey("and sets the MESOS_PORT_* env vars", func() {
+					So(exec.containerConfig.Config.Env, ShouldContain, fmt.Sprintf("MESOS_PORT_%d=%d", dummyContainerPort, dummyHostPort))
+				})
+
+				Convey("and sets the MESOS_HOSTNAME env var", func() {
+					So(exec.containerConfig.Config.Env, ShouldContain, "MESOS_HOSTNAME="+dummyTaskHost)
+				})
+
+				Convey("and sets any extra env vars", func() {
+					So(exec.containerConfig.Config.Env, ShouldContain, extraEnvVal)
+				})
+
+				Convey("and starts the container", func() {
+					So(dummyDockerClient.ContainerStarted, ShouldBeTrue)
+				})
+
+				Convey("and sets the process name", func() {
+					So(os.Args[0], ShouldStartWith, "sidecar-executor")
+					So(os.Args[0], ShouldContainSubstring, dummyDockerImageId)
+				})
+
+				Convey("and initialises the watch looper", func() {
+					So(exec.watchLooper, ShouldNotBeNil)
+				})
+			})
+
+			Convey("and reuses existing docker image", func() {
+				dummyDockerClient.Images[0].RepoTags = []string{dummyDockerImageId}
+				falseValue := false
+				taskInfo.Container.Docker.ForcePullImage = &falseValue
+
+				exec.LaunchTask(&taskInfo)
+
+				So(dummyDockerClient.ValidOptions, ShouldBeFalse)
+			})
+
+			Convey("and force pulls docker images even if they exist, if configured to do so", func() {
+				dummyDockerClient.Images[0].RepoTags = []string{dummyDockerImageId}
+				trueValue := true
+				taskInfo.Container.Docker.ForcePullImage = &trueValue
+
+				exec.LaunchTask(&taskInfo)
+
+				So(dummyDockerClient.ValidOptions, ShouldBeTrue)
+			})
+
+			Convey("and decrypts vault secrets", func() {
+				envKey := "env"
+				encryptedVal := "SUPER_SECRET_KEY=encrypted"
+				decryptedVal := "SUPER_SECRET_KEY=decrypted"
+				taskInfo.Container.Docker.Parameters = append(
+					taskInfo.Container.Docker.Parameters,
+					mesos.Parameter{Key: envKey, Value: encryptedVal},
+				)
+
+				exec.LaunchTask(&taskInfo)
+
+				So(exec.containerConfig.Config.Env, ShouldContain, decryptedVal)
+			})
+
+			Convey("and fails to launch a task when it can't decrypt vault secrets", func() {
+				dummyVault.failDecrypt = true
+
+				exec.LaunchTask(&taskInfo)
+
+				So(mockDriver.isStopped, ShouldBeTrue)
+
+				Convey("and sends an update to Mesos", func() {
+					So(mockDriver.receivedUpdate, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
+					So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
+					So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TASK_FAILED.Enum())
+				})
+
+				Convey("and checks the container health via Sidecar", func() {
+					dummyContainerLabels["SidecarDiscover"] = "true"
+					taskInfo.Container.Docker.Parameters = containerLabelsToDockerParameters(dummyContainerLabels)
+					exec.LaunchTask(&taskInfo)
+					exec.watchLooper.Quit()
+					err := exec.watchLooper.Wait()
+					So(err, ShouldBeNil)
+					So(sidecarStateCalls, ShouldEqual, 1)
+				})
+
+				// TODO: test exec.handleContainerLogs
+			})
+
+			Convey("fails to launch a task", func() {
+				Convey("when it fails to pull an image", func() {
+					dummyDockerClient.PullImageShouldError = true
+					exec.LaunchTask(&taskInfo)
+
+					So(mockDriver.isStopped, ShouldBeTrue)
+
+					Convey("and sends an update to Mesos", func() {
+						So(mockDriver.receivedUpdate, ShouldNotBeNil)
+						So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
+						So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
+						So(mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
+						So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
+						So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TASK_FAILED.Enum())
+					})
+				})
+			})
+		})
+
+		Convey("KillTask()", func() {
+			dummyContainerLabels["SidecarDiscover"] = "true"
+			exec.containerConfig = &docker.CreateContainerOptions{
+				Config: &docker.Config{
+					Labels: dummyContainerLabels,
+				},
+			}
+
+			exec.watchLooper = director.NewFreeLooper(1, make(chan error))
+
+			Convey("drains the service", func() {
+				exec.KillTask(&dummyTaskID)
+				So(sidecarDrainCalls, ShouldEqual, 1)
+
+				Convey("and sends an update to Mesos", func() {
+					So(mockDriver.receivedUpdate, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
+					So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
+					So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TASK_FINISHED.Enum())
+				})
+
+				Convey("and stops the Mesos driver", func() {
+					So(mockDriver.isStopped, ShouldBeTrue)
+				})
+			})
+
+			Convey("stops draining the service if the container exits prematurely", func() {
+				exec.config.SidecarDrainingDuration = 100 * time.Millisecond
+				exec.watcherDoneChan = make(chan struct{})
+				go exec.watchContainer(dummyContainerId, shouldCheckSidecar(exec.containerConfig))
+				go exec.monitorTask(dummyContainerId, &taskInfo)
+
+				exec.KillTask(&dummyTaskID)
+				So(<-exec.watcherDoneChan, ShouldResemble, struct{}{})
+			})
+
+			Convey("tries multiple times to drain the service", func() {
+				exec.config.SidecarRetryCount = 1
+				sidecarDrainFailOnce = true
+				exec.KillTask(&dummyTaskID)
+				So(sidecarDrainCalls, ShouldEqual, 2)
+			})
+
+			Convey("doesn't drain the the service when it has the label SidecarDiscover=false", func() {
+				dummyContainerLabels["SidecarDiscover"] = "false"
+				exec.KillTask(&dummyTaskID)
+				So(sidecarDrainCalls, ShouldEqual, 0)
+			})
+
+			Convey("doesn't drain the service when the SidecarDrainingDuration config parameter is 0", func() {
+				exec.config.SidecarDrainingDuration = 0
+				exec.KillTask(&dummyTaskID)
+				So(sidecarDrainCalls, ShouldEqual, 0)
+			})
 		})
 	})
 }
-
-//				Convey("and seeds sidecar", func() {
-//					exec.config.SeedSidecar = true
-//					err := os.Setenv("MESOS_AGENT_ENDPOINT", fakeServer.Listener.Addr().String())
-//					So(err, ShouldBeNil)
-//					defer os.Unsetenv("MESOS_AGENT_ENDPOINT")
-//
-//					exec.LaunchTask(exec.driver, &taskInfo)
-//
-//					So(exec.containerConfig.Config.Env, ShouldContain, "SIDECAR_SEEDS="+dummyMesosWorkerHost)
-//				})
-//
-//				Convey("and initialises the container config", func() {
-//					envKey := "env"
-//					extraEnvVal := "TEST_VAR=dummy_value"
-//					taskInfo.Container.Docker.Parameters = append(
-//						taskInfo.Container.Docker.Parameters,
-//						&mesos.Parameter{Key: &envKey, Value: &extraEnvVal},
-//					)
-//
-//					exec.LaunchTask(exec.driver, &taskInfo)
-//
-//					Convey("and pulls image", func() {
-//						So(dummyDockerClient.ValidOptions, ShouldBeTrue)
-//					})
-//
-//					Convey("and sets the container config on the executor", func() {
-//						So(exec.containerConfig, ShouldNotBeNil)
-//						So(exec.containerConfig.Name, ShouldEqual, expectedContainerId)
-//					})
-//
-//					Convey("and sets the container ID on the executor", func() {
-//						So(exec.containerID, ShouldEqual, expectedContainerId)
-//					})
-//
-//					Convey("and appends the task env vars", func() {
-//						So(exec.containerConfig.Config.Env, ShouldContain, "SERVICE_VERSION="+dummyDockerImageTag)
-//						So(exec.containerConfig.Config.Env, ShouldContain, taskID+"="+dummyTaskIDValue)
-//						So(exec.containerConfig.Config.Env, ShouldContain, taskHost+"="+dummyTaskHost)
-//					})
-//
-//					Convey("and sets the MESOS_PORT_* env vars", func() {
-//						So(exec.containerConfig.Config.Env, ShouldContain, fmt.Sprintf("MESOS_PORT_%d=%d", dummyContainerPort, dummyHostPort))
-//					})
-//
-//					Convey("and sets the MESOS_HOSTNAME env var", func() {
-//						So(exec.containerConfig.Config.Env, ShouldContain, "MESOS_HOSTNAME="+dummyTaskHost)
-//					})
-//
-//					Convey("and sets any extra env vars", func() {
-//						So(exec.containerConfig.Config.Env, ShouldContain, extraEnvVal)
-//					})
-//
-//					Convey("and starts the container", func() {
-//						So(dummyDockerClient.ContainerStarted, ShouldBeTrue)
-//					})
-//
-//					Convey("and sets the process name", func() {
-//						So(os.Args[0], ShouldStartWith, "sidecar-executor")
-//						So(os.Args[0], ShouldContainSubstring, dummyDockerImageId)
-//					})
-//
-//					Convey("and initialises the watch looper", func() {
-//						So(exec.watchLooper, ShouldNotBeNil)
-//					})
-//				})
-//
-//				Convey("and reuses existing docker image", func() {
-//					dummyDockerClient.Images[0].RepoTags = []string{dummyDockerImageId}
-//					falseValue := false
-//					taskInfo.Container.Docker.ForcePullImage = &falseValue
-//
-//					exec.LaunchTask(exec.driver, &taskInfo)
-//
-//					So(dummyDockerClient.ValidOptions, ShouldBeFalse)
-//				})
-//
-//				Convey("and force pulls docker images even if they exist, if configured to do so", func() {
-//					dummyDockerClient.Images[0].RepoTags = []string{dummyDockerImageId}
-//					trueValue := true
-//					taskInfo.Container.Docker.ForcePullImage = &trueValue
-//
-//					exec.LaunchTask(exec.driver, &taskInfo)
-//
-//					So(dummyDockerClient.ValidOptions, ShouldBeTrue)
-//				})
-//
-//				Convey("and decrypts vault secrets", func() {
-//					envKey := "env"
-//					encryptedVal := "SUPER_SECRET_KEY=encrypted"
-//					decryptedVal := "SUPER_SECRET_KEY=decrypted"
-//					taskInfo.Container.Docker.Parameters = append(
-//						taskInfo.Container.Docker.Parameters,
-//						&mesos.Parameter{Key: &envKey, Value: &encryptedVal},
-//					)
-//
-//					exec.LaunchTask(exec.driver, &taskInfo)
-//
-//					So(exec.containerConfig.Config.Env, ShouldContain, decryptedVal)
-//				})
-//
-//				Convey("and fails to launch a task when it can't decrypt vault secrets", func() {
-//					dummyVault.failDecrypt = true
-//
-//					exec.LaunchTask(exec.driver, &taskInfo)
-//
-//					So(mockDriver.isStopped, ShouldBeTrue)
-//
-//					Convey("and sends an update to Mesos", func() {
-//						So(mockDriver.receivedUpdate, ShouldNotBeNil)
-//						So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
-//						So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
-//						So(*mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
-//						So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
-//						So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TaskState_TASK_FAILED.Enum())
-//					})
-//				})
-//
-//				Convey("and checks the container health via Sidecar", func() {
-//					dummyContainerLabels["SidecarDiscover"] = "true"
-//					taskInfo.Container.Docker.Parameters = containerLabelsToDockerParameters(dummyContainerLabels)
-//					exec.LaunchTask(exec.driver, &taskInfo)
-//					exec.watchLooper.Quit()
-//					err := exec.watchLooper.Wait()
-//					So(err, ShouldBeNil)
-//					So(sidecarStateCalls, ShouldEqual, 1)
-//				})
-//
-//				// TODO: test exec.handleContainerLogs
-//			})
-//
-//			Convey("fails to launch a task", func() {
-//				Convey("when it fails to pull an image", func() {
-//					dummyDockerClient.PullImageShouldError = true
-//					exec.LaunchTask(exec.driver, &taskInfo)
-//
-//					So(mockDriver.isStopped, ShouldBeTrue)
-//
-//					Convey("and sends an update to Mesos", func() {
-//						So(mockDriver.receivedUpdate, ShouldNotBeNil)
-//						So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
-//						So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
-//						So(*mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
-//						So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
-//						So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TaskState_TASK_FAILED.Enum())
-//					})
-//				})
-//			})
-//		})
-//
-//		Convey("KillTask()", func() {
-//			dummyContainerLabels["SidecarDiscover"] = "true"
-//			exec.containerConfig = &docker.CreateContainerOptions{
-//				Config: &docker.Config{
-//					Labels: dummyContainerLabels,
-//				},
-//			}
-//
-//			exec.watchLooper = director.NewFreeLooper(1, make(chan error))
-//
-//			Convey("drains the service", func() {
-//				exec.KillTask(exec.driver, &dummyTaskID)
-//				So(sidecarDrainCalls, ShouldEqual, 1)
-//
-//				Convey("and sends an update to Mesos", func() {
-//					So(mockDriver.receivedUpdate, ShouldNotBeNil)
-//					So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
-//					So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
-//					So(*mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
-//					So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
-//					So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TaskState_TASK_FINISHED.Enum())
-//				})
-//
-//				Convey("and stops the Mesos driver", func() {
-//					So(mockDriver.isStopped, ShouldBeTrue)
-//				})
-//			})
-//
-//			Convey("stops draining the service if the container exits prematurely", func() {
-//				exec.config.SidecarDrainingDuration = 100 * time.Millisecond
-//				exec.watcherDoneChan = make(chan struct{})
-//				go exec.watchContainer(dummyContainerId, shouldCheckSidecar(exec.containerConfig))
-//				go exec.monitorTask(dummyContainerId, &taskInfo)
-//
-//				exec.KillTask(exec.driver, &dummyTaskID)
-//				So(<-exec.watcherDoneChan, ShouldResemble, struct{}{})
-//			})
-//
-//			Convey("tries multiple times to drain the service", func() {
-//				exec.config.SidecarRetryCount = 1
-//				sidecarDrainFailOnce = true
-//				exec.KillTask(exec.driver, &dummyTaskID)
-//				So(sidecarDrainCalls, ShouldEqual, 2)
-//			})
-//
-//			Convey("doesn't drain the the service when it has the label SidecarDiscover=false", func() {
-//				dummyContainerLabels["SidecarDiscover"] = "false"
-//				exec.KillTask(exec.driver, &dummyTaskID)
-//				So(sidecarDrainCalls, ShouldEqual, 0)
-//			})
-//
-//			Convey("doesn't drain the service when the SidecarDrainingDuration config parameter is 0", func() {
-//				exec.config.SidecarDrainingDuration = 0
-//				exec.KillTask(exec.driver, &dummyTaskID)
-//				So(sidecarDrainCalls, ShouldEqual, 0)
-//			})
-//		})
-//	})
-//}
