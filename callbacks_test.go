@@ -1,58 +1,24 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/Nitro/sidecar-executor/container"
+	"github.com/Nitro/sidecar/service"
 	"github.com/fsouza/go-dockerclient"
+	mesos "github.com/mesos/mesos-go/api/v1/lib"
+	"github.com/pborman/uuid"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-//
-//type dummyMesosDriver struct {
-//	isStopped      bool
-//	receivedUpdate *mesos.TaskStatus
-//}
-//
-//func (d *dummyMesosDriver) Running() bool              { return !d.isStopped }
-//func (*dummyMesosDriver) Start() (mesos.Status, error) { return 0, nil }
-//func (d *dummyMesosDriver) Stop() (mesos.Status, error) {
-//	d.isStopped = true
-//	return 0, nil
-//}
-//func (*dummyMesosDriver) Abort() (mesos.Status, error) { return 0, nil }
-//func (*dummyMesosDriver) Join() (mesos.Status, error)  { return 0, nil }
-//func (*dummyMesosDriver) Run() (mesos.Status, error)   { return 0, nil }
-//func (d *dummyMesosDriver) SendStatusUpdate(taskStatus *mesos.TaskStatus) (mesos.Status, error) {
-//	d.receivedUpdate = taskStatus
-//	return 0, nil
-//}
-//func (*dummyMesosDriver) SendFrameworkMessage(string) (mesos.Status, error) { return 0, nil }
-//
-//type mockVault struct {
-//	failDecrypt bool
-//}
-//
-//func (v *mockVault) DecryptAllEnv(envs []string) ([]string, error) {
-//	if v.failDecrypt {
-//		return nil, errors.New("some error")
-//	}
-//
-//	var decryptedEnv []string
-//	for _, env := range envs {
-//		keyValue := strings.SplitN(env, "=", 2)
-//		envName := keyValue[0]
-//		envValue := keyValue[1]
-//
-//		if envValue == "encrypted" {
-//			decryptedEnv = append(decryptedEnv, envName+"=decrypted")
-//		} else {
-//			decryptedEnv = append(decryptedEnv, env)
-//		}
-//	}
-//
-//	return decryptedEnv, nil
-//}
-//
 func Test_shouldCheckSidecar(t *testing.T) {
 	Convey("When checking if Sidecar is enabled", t, func() {
 
@@ -78,189 +44,267 @@ func Test_shouldCheckSidecar(t *testing.T) {
 	})
 }
 
+type mockMesosDriver struct {
+	messages       map[string]*mesos.TaskStatus
+	receivedUpdate *mesos.TaskStatus
+}
+
+func (d *mockMesosDriver) NewStatus(id mesos.TaskID) mesos.TaskStatus {
+	return mesos.TaskStatus{
+		TaskID:     id,
+		Source:     mesos.SOURCE_EXECUTOR.Enum(),
+		ExecutorID: &mesos.ExecutorID{"fooExecutor"},
+		UUID:       []byte(uuid.NewRandom()),
+	}
+}
+
+func (d *mockMesosDriver) SendStatusUpdate(status mesos.TaskStatus) error {
+	d.receivedUpdate = &status
+	return nil
+}
+
+func (d *mockMesosDriver) Run() error {
+	return nil
+}
+
+func (d *mockMesosDriver) Stop() {
+
+}
+
 //
-//func containerLabelsToDockerParameters(labels map[string]string) []*mesos.Parameter {
-//	var parameters []*mesos.Parameter
-//	key := "label"
-//	for labelKey, labelValue := range labels {
-//		value := labelKey + "=" + labelValue
-//		parameters = append(parameters,
-//			&mesos.Parameter{Key: key, Value: value},
-//		)
-//	}
-//
-//	return parameters
+//type mockDriver struct {
+//	isStopped      bool
+//	receivedUpdate *mesos.TaskStatus
 //}
 //
-//func Test_ExecutorCallbacks(t *testing.T) {
-//	Convey("sidecarExecutor should", t, func(c C) {
-//		dummyServiceName := "foobar"
-//		dummyTaskName := dummyServiceName + "_task"
-//		dummyTaskIdValue := "task_42"
-//		dummyTaskId := mesos.TaskID{Value: &dummyTaskIdValue}
-//		dummyCommand := "sudo_make_me_a_sandwich"
-//		dummyContainerId := "123456654321"
-//		dummyDockerImageTag := "666"
-//		dummyDockerImageId := dummyServiceName + ":" + dummyDockerImageTag
-//		dummyEnvironmentName := "mordor"
-//		dummyTaskHost := "brainiac"
-//		dummyMesosWorkerHost := "jotunheim"
-//		dummyContainerPort := uint32(80)
-//		dummyHostPort := uint32(8080)
-//		// computed via `container.GetContainerName(&dummyTaskId)`
-//		expectedContainerId := "mesos-5cf434e4-0723-522d-aea0-1a344f913c23"
+//func (d *mockDriver) Running() bool              { return !d.isStopped }
+//func (*mockDriver) Start() (mesos.Status, error) { return 0, nil }
+//func (d *mockDriver) Stop() (mesos.Status, error) {
+//	d.isStopped = true
+//	return 0, nil
+//}
+//func (*mockDriver) Abort() (mesos.Status, error) { return 0, nil }
+//func (*mockDriver) Join() (mesos.Status, error)  { return 0, nil }
+//func (*mockDriver) Run() (mesos.Status, error)   { return 0, nil }
+//func (d *mockDriver) SendStatusUpdate(taskStatus *mesos.TaskStatus) (mesos.Status, error) {
+//	d.receivedUpdate = taskStatus
+//	return 0, nil
+//}
+//func (*mockDriver) SendFrameworkMessage(string) (mesos.Status, error) { return 0, nil }
 //
-//		// Required by sidecarLookup()
-//		err := os.Setenv("TASK_HOST", dummyTaskHost)
-//		So(err, ShouldBeNil)
-//		defer os.Unsetenv("TASK_HOST")
-//
-//		mux := http.NewServeMux()
-//		fakeServer := httptest.NewServer(mux)
-//		Reset(func() {
-//			fakeServer.Close()
-//		})
-//
-//		// Sidecar services handler
-//		sidecarStateCalls := 0
-//		Reset(func() {
-//			sidecarStateCalls = 0
-//		})
-//		mux.HandleFunc("/state.json",
-//			func(w http.ResponseWriter, r *http.Request) {
-//				sidecarStateCalls++
-//
-//				services := SidecarServices{
-//					Servers: map[string]SidecarServer{
-//						dummyTaskHost: {
-//							Services: map[string]service.Service{
-//								expectedContainerId[:12]: {},
-//							},
-//						},
-//					},
-//				}
-//
-//				w.Header().Set("Content-Type", "application/json")
-//				err := json.NewEncoder(w).Encode(services)
-//				c.So(err, ShouldBeNil)
-//			},
-//		)
-//		// Sidecar drain handler
-//		sidecarDrainCalls := 0
-//		sidecarDrainFailOnce := false
-//		Reset(func() {
-//			sidecarDrainCalls = 0
-//			sidecarDrainFailOnce = false
-//		})
-//		mux.HandleFunc(
-//			fmt.Sprintf("/api/services/%s/drain", dummyContainerId),
-//			func(w http.ResponseWriter, r *http.Request) {
-//				c.So(r.URL.Path, ShouldEqual, fmt.Sprintf("/api/services/%s/drain", dummyContainerId))
-//
-//				sidecarDrainCalls++
-//
-//				if sidecarDrainFailOnce && sidecarDrainCalls == 1 {
-//					http.Error(w, "Kaboom!", 500)
-//					return
-//				}
-//
-//				w.WriteHeader(202)
-//			},
-//		)
-//		// Mesos master handler
-//		mux.HandleFunc("/state", func(w http.ResponseWriter, r *http.Request) {
-//			w.Header().Set("Content-Type", "application/json")
-//			fmt.Fprintf(w, `{"master_hostname":"`+fakeServer.Listener.Addr().String()+`"}`)
-//		})
-//		// Mesos slaves handler
-//		mux.HandleFunc("/slaves", func(w http.ResponseWriter, r *http.Request) {
-//			w.Header().Set("Content-Type", "application/json")
-//			fmt.Fprintf(w, `{"slaves":[{"hostname":"`+dummyMesosWorkerHost+`"}]}`)
-//		})
-//
-//		dummyDockerClient := container.MockDockerClient{
-//			Container: &docker.Container{
-//				State: docker.State{Status: "exited"},
-//			},
-//			Images: []docker.APIImages{
-//				{
-//					ID: dummyDockerImageId,
-//				},
-//			},
-//			ListContainersContainers: []docker.APIContainers{
-//				{ID: container.GetContainerName(&dummyTaskId)},
-//			},
-//		}
-//
-//		dummyMesosDriver := dummyMesosDriver{}
-//
-//		dummyVault := mockVault{}
-//
-//		exec := sidecarExecutor{
-//			dockerAuth: &docker.AuthConfiguration{},
-//			client:     &dummyDockerClient,
-//			driver:     &dummyMesosDriver,
-//			fetcher:    http.DefaultClient,
-//			config: Config{
-//				SidecarUrl:              fakeServer.URL + "/state.json",
-//				SidecarDrainingDuration: 1 * time.Millisecond,
-//				SidecarPollInterval:     1 * time.Millisecond,
-//			},
-//			containerID: dummyContainerId,
-//			vault:       &dummyVault,
-//		}
-//
-//		dummyContainerLabels := map[string]string{
-//			"ServiceName":     dummyServiceName,
-//			"EnvironmentName": dummyEnvironmentName,
-//			// We don't want to check Sidecar in most tests
-//			"SidecarDiscover": "false",
-//		}
-//
-//		var dockerNetworkMode mesos.ContainerInfo_DockerInfo_Network
-//		taskId := "TASK_ID"
-//		taskHost := "TASK_HOST"
-//		taskInfo := mesos.TaskInfo{
-//			Name:   &dummyTaskName,
-//			TaskId: &dummyTaskId,
-//			Command: &mesos.CommandInfo{
-//				Value: &dummyCommand,
-//			},
-//			Executor: &mesos.ExecutorInfo{
-//				Command: &mesos.CommandInfo{
-//					Environment: &mesos.Environment{
-//						Variables: []*mesos.Environment_Variable{
-//							{Name: &taskId, Value: &dummyTaskIdValue},
-//							{Name: &taskHost, Value: &dummyTaskHost},
-//						},
-//					},
-//				},
-//			},
-//			Container: &mesos.ContainerInfo{
-//				Docker: &mesos.ContainerInfo_DockerInfo{
-//					Image:   &dummyDockerImageId,
-//					Network: &dockerNetworkMode,
-//					PortMappings: []*mesos.ContainerInfo_DockerInfo_PortMapping{
-//						{HostPort: &dummyHostPort, ContainerPort: &dummyContainerPort},
-//					},
-//					Parameters: containerLabelsToDockerParameters(dummyContainerLabels),
-//				},
-//			},
-//		}
-//
-//		Convey("LaunchTask()", func() {
-//			Convey("launches a task", func() {
-//				Convey("and sends an update to Mesos", func() {
-//					exec.LaunchTask(exec.driver, &taskInfo)
-//
-//					So(dummyMesosDriver.receivedUpdate, ShouldNotBeNil)
-//					So(dummyMesosDriver.receivedUpdate.TaskId, ShouldNotBeNil)
-//					So(dummyMesosDriver.receivedUpdate.TaskId.Value, ShouldNotBeNil)
-//					So(*dummyMesosDriver.receivedUpdate.TaskId.Value, ShouldEqual, dummyTaskIdValue)
-//					So(dummyMesosDriver.receivedUpdate.State, ShouldNotBeNil)
-//					So(*dummyMesosDriver.receivedUpdate.State, ShouldEqual, *mesos.TaskState_TASK_RUNNING.Enum())
-//				})
-//
+
+type mockVault struct {
+	failDecrypt bool
+}
+
+func (v *mockVault) DecryptAllEnv(envs []string) ([]string, error) {
+	if v.failDecrypt {
+		return nil, errors.New("some error")
+	}
+
+	var decryptedEnv []string
+	for _, env := range envs {
+		keyValue := strings.SplitN(env, "=", 2)
+		envName := keyValue[0]
+		envValue := keyValue[1]
+
+		if envValue == "encrypted" {
+			decryptedEnv = append(decryptedEnv, envName+"=decrypted")
+		} else {
+			decryptedEnv = append(decryptedEnv, env)
+		}
+	}
+
+	return decryptedEnv, nil
+}
+
+func containerLabelsToDockerParameters(labels map[string]string) []mesos.Parameter {
+	var parameters []mesos.Parameter
+	key := "label"
+	for labelKey, labelValue := range labels {
+		value := labelKey + "=" + labelValue
+		parameters = append(parameters,
+			mesos.Parameter{Key: key, Value: value},
+		)
+	}
+
+	return parameters
+}
+
+func Test_ExecutorCallbacks(t *testing.T) {
+	Convey("sidecarExecutor should", t, func(c C) {
+		dummyServiceName := "foobar"
+		dummyTaskName := dummyServiceName + "_task"
+		dummyTaskIDValue := "task_42"
+		dummyTaskID := mesos.TaskID{Value: dummyTaskIDValue}
+		dummyCommand := "sudo_make_me_a_sandwich"
+		dummyContainerId := "123456654321"
+		dummyDockerImageTag := "666"
+		dummyDockerImageId := dummyServiceName + ":" + dummyDockerImageTag
+		dummyEnvironmentName := "mordor"
+		dummyTaskHost := "brainiac"
+		dummyMesosWorkerHost := "jotunheim"
+		dummyContainerPort := uint32(80)
+		dummyHostPort := uint32(8080)
+		// computed via `container.GetContainerName(&dummyTaskID)`
+		expectedContainerId := "mesos-5cf434e4-0723-522d-aea0-1a344f913c23"
+
+		// Required by sidecarLookup()
+		err := os.Setenv("TASK_HOST", dummyTaskHost)
+		So(err, ShouldBeNil)
+		defer os.Unsetenv("TASK_HOST")
+
+		mux := http.NewServeMux()
+		fakeServer := httptest.NewServer(mux)
+		Reset(func() {
+			fakeServer.Close()
+		})
+
+		// Sidecar services handler
+		sidecarStateCalls := 0
+		Reset(func() {
+			sidecarStateCalls = 0
+		})
+		mux.HandleFunc("/state.json",
+			func(w http.ResponseWriter, r *http.Request) {
+				sidecarStateCalls++
+
+				services := SidecarServices{
+					Servers: map[string]SidecarServer{
+						dummyTaskHost: {
+							Services: map[string]service.Service{
+								expectedContainerId[:12]: {},
+							},
+						},
+					},
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				err := json.NewEncoder(w).Encode(services)
+				c.So(err, ShouldBeNil)
+			},
+		)
+		// Sidecar drain handler
+		sidecarDrainCalls := 0
+		sidecarDrainFailOnce := false
+		Reset(func() {
+			sidecarDrainCalls = 0
+			sidecarDrainFailOnce = false
+		})
+		mux.HandleFunc(
+			fmt.Sprintf("/api/services/%s/drain", dummyContainerId),
+			func(w http.ResponseWriter, r *http.Request) {
+				c.So(r.URL.Path, ShouldEqual, fmt.Sprintf("/api/services/%s/drain", dummyContainerId))
+
+				sidecarDrainCalls++
+
+				if sidecarDrainFailOnce && sidecarDrainCalls == 1 {
+					http.Error(w, "Kaboom!", 500)
+					return
+				}
+
+				w.WriteHeader(202)
+			},
+		)
+		// Mesos master handler
+		mux.HandleFunc("/state", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"master_hostname":"`+fakeServer.Listener.Addr().String()+`"}`)
+		})
+		// Mesos slaves handler
+		mux.HandleFunc("/slaves", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"slaves":[{"hostname":"`+dummyMesosWorkerHost+`"}]}`)
+		})
+
+		dummyDockerClient := container.MockDockerClient{
+			Container: &docker.Container{
+				State: docker.State{Status: "exited"},
+			},
+			Images: []docker.APIImages{
+				{
+					ID: dummyDockerImageId,
+				},
+			},
+			ListContainersContainers: []docker.APIContainers{
+				{ID: container.GetContainerName(&dummyTaskID)},
+			},
+		}
+
+		mockDriver := mockMesosDriver{}
+
+		dummyVault := mockVault{}
+
+		exec := sidecarExecutor{
+			dockerAuth: &docker.AuthConfiguration{},
+			client:     &dummyDockerClient,
+			fetcher:    http.DefaultClient,
+			config: Config{
+				SidecarUrl:              fakeServer.URL + "/state.json",
+				SidecarDrainingDuration: 1 * time.Millisecond,
+				SidecarPollInterval:     1 * time.Millisecond,
+			},
+			containerID: dummyContainerId,
+			vault:       &dummyVault,
+			driver:      &mockDriver,
+		}
+
+		dummyContainerLabels := map[string]string{
+			"ServiceName":     dummyServiceName,
+			"EnvironmentName": dummyEnvironmentName,
+			// We don't want to check Sidecar in most tests
+			"SidecarDiscover": "false",
+		}
+
+		var dockerNetworkMode mesos.ContainerInfo_DockerInfo_Network
+		taskID := "TASK_ID"
+		taskHost := "TASK_HOST"
+		taskInfo := mesos.TaskInfo{
+			Name:   dummyTaskName,
+			TaskID: dummyTaskID,
+			Command: &mesos.CommandInfo{
+				Value: &dummyCommand,
+			},
+			Executor: &mesos.ExecutorInfo{
+				Command: &mesos.CommandInfo{
+					Environment: &mesos.Environment{
+						Variables: []mesos.Environment_Variable{
+							{Name: taskID, Value: &dummyTaskIDValue},
+							{Name: taskHost, Value: &dummyTaskHost},
+						},
+					},
+				},
+			},
+			Container: &mesos.ContainerInfo{
+				Docker: &mesos.ContainerInfo_DockerInfo{
+					Image:   dummyDockerImageId,
+					Network: &dockerNetworkMode,
+					PortMappings: []mesos.ContainerInfo_DockerInfo_PortMapping{
+						{HostPort: dummyHostPort, ContainerPort: dummyContainerPort},
+					},
+					Parameters: containerLabelsToDockerParameters(dummyContainerLabels),
+				},
+			},
+		}
+
+		Convey("LaunchTask()", func() {
+			Convey("launches a task", func() {
+				Convey("and sends an update to Mesos", func() {
+					exec.LaunchTask(&taskInfo)
+
+					So(mockDriver.receivedUpdate, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
+					So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
+					So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TASK_RUNNING.Enum())
+				})
+
+			})
+		})
+	})
+}
+
 //				Convey("and seeds sidecar", func() {
 //					exec.config.SeedSidecar = true
 //					err := os.Setenv("MESOS_AGENT_ENDPOINT", fakeServer.Listener.Addr().String())
@@ -297,7 +341,7 @@ func Test_shouldCheckSidecar(t *testing.T) {
 //
 //					Convey("and appends the task env vars", func() {
 //						So(exec.containerConfig.Config.Env, ShouldContain, "SERVICE_VERSION="+dummyDockerImageTag)
-//						So(exec.containerConfig.Config.Env, ShouldContain, taskId+"="+dummyTaskIdValue)
+//						So(exec.containerConfig.Config.Env, ShouldContain, taskID+"="+dummyTaskIDValue)
 //						So(exec.containerConfig.Config.Env, ShouldContain, taskHost+"="+dummyTaskHost)
 //					})
 //
@@ -366,15 +410,15 @@ func Test_shouldCheckSidecar(t *testing.T) {
 //
 //					exec.LaunchTask(exec.driver, &taskInfo)
 //
-//					So(dummyMesosDriver.isStopped, ShouldBeTrue)
+//					So(mockDriver.isStopped, ShouldBeTrue)
 //
 //					Convey("and sends an update to Mesos", func() {
-//						So(dummyMesosDriver.receivedUpdate, ShouldNotBeNil)
-//						So(dummyMesosDriver.receivedUpdate.TaskId, ShouldNotBeNil)
-//						So(dummyMesosDriver.receivedUpdate.TaskId.Value, ShouldNotBeNil)
-//						So(*dummyMesosDriver.receivedUpdate.TaskId.Value, ShouldEqual, dummyTaskIdValue)
-//						So(dummyMesosDriver.receivedUpdate.State, ShouldNotBeNil)
-//						So(*dummyMesosDriver.receivedUpdate.State, ShouldEqual, *mesos.TaskState_TASK_FAILED.Enum())
+//						So(mockDriver.receivedUpdate, ShouldNotBeNil)
+//						So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
+//						So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
+//						So(*mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
+//						So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
+//						So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TaskState_TASK_FAILED.Enum())
 //					})
 //				})
 //
@@ -396,15 +440,15 @@ func Test_shouldCheckSidecar(t *testing.T) {
 //					dummyDockerClient.PullImageShouldError = true
 //					exec.LaunchTask(exec.driver, &taskInfo)
 //
-//					So(dummyMesosDriver.isStopped, ShouldBeTrue)
+//					So(mockDriver.isStopped, ShouldBeTrue)
 //
 //					Convey("and sends an update to Mesos", func() {
-//						So(dummyMesosDriver.receivedUpdate, ShouldNotBeNil)
-//						So(dummyMesosDriver.receivedUpdate.TaskId, ShouldNotBeNil)
-//						So(dummyMesosDriver.receivedUpdate.TaskId.Value, ShouldNotBeNil)
-//						So(*dummyMesosDriver.receivedUpdate.TaskId.Value, ShouldEqual, dummyTaskIdValue)
-//						So(dummyMesosDriver.receivedUpdate.State, ShouldNotBeNil)
-//						So(*dummyMesosDriver.receivedUpdate.State, ShouldEqual, *mesos.TaskState_TASK_FAILED.Enum())
+//						So(mockDriver.receivedUpdate, ShouldNotBeNil)
+//						So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
+//						So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
+//						So(*mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
+//						So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
+//						So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TaskState_TASK_FAILED.Enum())
 //					})
 //				})
 //			})
@@ -421,20 +465,20 @@ func Test_shouldCheckSidecar(t *testing.T) {
 //			exec.watchLooper = director.NewFreeLooper(1, make(chan error))
 //
 //			Convey("drains the service", func() {
-//				exec.KillTask(exec.driver, &dummyTaskId)
+//				exec.KillTask(exec.driver, &dummyTaskID)
 //				So(sidecarDrainCalls, ShouldEqual, 1)
 //
 //				Convey("and sends an update to Mesos", func() {
-//					So(dummyMesosDriver.receivedUpdate, ShouldNotBeNil)
-//					So(dummyMesosDriver.receivedUpdate.TaskId, ShouldNotBeNil)
-//					So(dummyMesosDriver.receivedUpdate.TaskId.Value, ShouldNotBeNil)
-//					So(*dummyMesosDriver.receivedUpdate.TaskId.Value, ShouldEqual, dummyTaskIdValue)
-//					So(dummyMesosDriver.receivedUpdate.State, ShouldNotBeNil)
-//					So(*dummyMesosDriver.receivedUpdate.State, ShouldEqual, *mesos.TaskState_TASK_FINISHED.Enum())
+//					So(mockDriver.receivedUpdate, ShouldNotBeNil)
+//					So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
+//					So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
+//					So(*mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
+//					So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
+//					So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TaskState_TASK_FINISHED.Enum())
 //				})
 //
 //				Convey("and stops the Mesos driver", func() {
-//					So(dummyMesosDriver.isStopped, ShouldBeTrue)
+//					So(mockDriver.isStopped, ShouldBeTrue)
 //				})
 //			})
 //
@@ -444,26 +488,26 @@ func Test_shouldCheckSidecar(t *testing.T) {
 //				go exec.watchContainer(dummyContainerId, shouldCheckSidecar(exec.containerConfig))
 //				go exec.monitorTask(dummyContainerId, &taskInfo)
 //
-//				exec.KillTask(exec.driver, &dummyTaskId)
+//				exec.KillTask(exec.driver, &dummyTaskID)
 //				So(<-exec.watcherDoneChan, ShouldResemble, struct{}{})
 //			})
 //
 //			Convey("tries multiple times to drain the service", func() {
 //				exec.config.SidecarRetryCount = 1
 //				sidecarDrainFailOnce = true
-//				exec.KillTask(exec.driver, &dummyTaskId)
+//				exec.KillTask(exec.driver, &dummyTaskID)
 //				So(sidecarDrainCalls, ShouldEqual, 2)
 //			})
 //
 //			Convey("doesn't drain the the service when it has the label SidecarDiscover=false", func() {
 //				dummyContainerLabels["SidecarDiscover"] = "false"
-//				exec.KillTask(exec.driver, &dummyTaskId)
+//				exec.KillTask(exec.driver, &dummyTaskID)
 //				So(sidecarDrainCalls, ShouldEqual, 0)
 //			})
 //
 //			Convey("doesn't drain the service when the SidecarDrainingDuration config parameter is 0", func() {
 //				exec.config.SidecarDrainingDuration = 0
-//				exec.KillTask(exec.driver, &dummyTaskId)
+//				exec.KillTask(exec.driver, &dummyTaskID)
 //				So(sidecarDrainCalls, ShouldEqual, 0)
 //			})
 //		})
