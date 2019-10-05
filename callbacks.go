@@ -14,12 +14,12 @@ import (
 // the Executor interface.
 
 func (exec *sidecarExecutor) Registered(driver executor.ExecutorDriver,
-	execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, slaveInfo *mesos.AgentInfo) {
-	log.Info("Registered Executor on slave ", slaveInfo.GetHostname())
+	execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, agentInfo *mesos.AgentInfo) {
+	log.Info("Registered Executor on slave ", agentInfo.GetHostname())
 }
 
-func (exec *sidecarExecutor) Reregistered(driver executor.ExecutorDriver, slaveInfo *mesos.AgentInfo) {
-	log.Info("Re-registered Executor on slave ", slaveInfo.GetHostname())
+func (exec *sidecarExecutor) Reregistered(driver executor.ExecutorDriver, agentInfo *mesos.AgentInfo) {
+	log.Info("Re-registered Executor on slave ", agentInfo.GetHostname())
 }
 
 func (exec *sidecarExecutor) Disconnected(driver executor.ExecutorDriver) {
@@ -28,7 +28,7 @@ func (exec *sidecarExecutor) Disconnected(driver executor.ExecutorDriver) {
 
 // LaunchTask is a callback from Mesos driver to launch a new task in this
 // executor.
-func (exec *sidecarExecutor) LaunchTask(driver executor.ExecutorDriver, taskInfo *mesos.TaskInfo) {
+func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 	taskID := taskInfo.GetTaskID()
 	log.Infof("Launching task %s with command '%s'", taskInfo.GetName(), taskInfo.Command.GetValue())
 	log.Info("Task ID ", taskID.GetValue())

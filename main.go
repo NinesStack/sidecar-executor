@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -22,8 +21,8 @@ import (
 	"github.com/Nitro/sidecar-executor/vault"
 	"github.com/Nitro/sidecar/service"
 	"github.com/fsouza/go-dockerclient"
-	"github.com/mesos/mesos-go/api/v0/executor"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
+	mesosconfig "github.com/mesos/mesos-go/api/v1/lib/executor/config"
 	"github.com/relistan/envconfig"
 	"github.com/relistan/go-director"
 	log "github.com/sirupsen/logrus"
@@ -83,7 +82,6 @@ type Vault interface {
 }
 
 type sidecarExecutor struct {
-	driver          MesosExecutorDriver
 	client          container.DockerClient
 	fetcher         SidecarFetcher
 	watchLooper     director.Looper
@@ -97,6 +95,7 @@ type sidecarExecutor struct {
 	// Populated during LaunchTask
 	containerConfig *docker.CreateContainerOptions
 	containerID     string
+	driver          *executorDriver
 }
 
 type SidecarServer struct {
@@ -186,38 +185,34 @@ func (exec *sidecarExecutor) logTaskEnv(taskInfo *mesos.TaskInfo, labels map[str
 
 // Send task status updates to Mesos via the executor driver
 func (exec *sidecarExecutor) sendStatus(status int64, taskID *mesos.TaskID) {
-	var mesosStatus *mesos.TaskState
+	update := exec.driver.newStatus(*taskID)
+
 	switch status {
 	case TaskRunning:
-		mesosStatus = mesos.TASK_RUNNING.Enum()
+		update.State = mesos.TASK_RUNNING.Enum()
 	case TaskFinished:
-		mesosStatus = mesos.TASK_FINISHED.Enum()
+		update.State = mesos.TASK_FINISHED.Enum()
 	case TaskFailed:
-		mesosStatus = mesos.TASK_FAILED.Enum()
+		update.State = mesos.TASK_FAILED.Enum()
 	case TaskKilled:
-		mesosStatus = mesos.TASK_KILLED.Enum()
+		update.State = mesos.TASK_KILLED.Enum()
 	}
 
-	update := &mesos.TaskStatus{
-		TaskID: *taskID,
-		State:  mesosStatus,
-	}
-
-	if _, err := exec.driver.SendStatusUpdate(update); err != nil {
+	if err := exec.driver.SendStatusUpdate(update); err != nil {
 		log.Errorf("Error sending status update %s", err.Error())
 		panic(err.Error())
 	}
 }
 
 func (exec *sidecarExecutor) stopDriver() {
-	if !exec.driver.Running() {
-		return
-	}
-
-	_, err := exec.driver.Stop()
-	if err != nil {
-		log.Errorf("Error stopping mesos driver: %s", err)
-	}
+	//	if !exec.driver.Running() {
+	//		return
+	//	}
+	//
+	//	_, err := exec.driver.Stop()
+	//	if err != nil {
+	//		log.Errorf("Error stopping mesos driver: %s", err)
+	//	}
 }
 
 // Tell Mesos and thus the framework that the task finished. Shutdown driver.
@@ -474,8 +469,6 @@ func handleSignals(scExec *sidecarExecutor) {
 }
 
 func initConfig() (Config, error) {
-	flag.Parse() // Required by mesos-go executor driver
-
 	var config Config
 	err := envconfig.Process("executor", &config)
 	if err != nil {
@@ -509,30 +502,23 @@ func main() {
 
 	dockerAuth := getDockerAuthConfig(config.DockerRepository)
 	scExec := newSidecarExecutor(dockerClient, &dockerAuth, config)
-	dconfig := executor.DriverConfig{Executor: scExec}
 
-	driver, err := executor.NewMesosExecutorDriver(dconfig)
-	if err != nil || driver == nil {
-		log.Fatalf("Unable to create an ExecutorDriver: %s", err)
+	cfg, err := mesosconfig.FromEnv()
+	if err != nil {
+		log.Fatal("failed to load configuration: " + err.Error())
 	}
-
-	// Give the executor a reference to the driver
-	scExec.driver = driver
+	log.Printf("configuration loaded: %+v", cfg)
 
 	go handleSignals(scExec)
 
-	_, err = driver.Start()
-	if err != nil {
-		log.Info("Got error:", err)
-		return
-	}
+	scExec.RunDriver(&cfg)
 
 	log.Info("Executor process has started")
 
-	_, err = driver.Join()
-	if err != nil {
-		log.Info("Driver failed:", err)
-	}
+	//_, err = driver.Join()
+	//if err != nil {
+	//	log.Info("Driver failed:", err)
+	//}
 
 	log.Info("Driver exited without error. Waiting 2 seconds to shut down executor.")
 	time.Sleep(2 * time.Second)
