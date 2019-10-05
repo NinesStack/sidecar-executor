@@ -19,6 +19,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// ExecDriver narrowly scopes the interface we expect from a driver. It is
+// implemented by the ExecutorDriver.
+type ExecDriver interface {
+	NewStatus(id mesos.TaskID) mesos.TaskStatus
+	SendStatusUpdate(status mesos.TaskStatus) error
+}
+
+// A sidecarExecutor is the main executor of this application. It handles all
+// the application lifecycle, interacting with Sidecar, launching and killing
+// tasks, etc. It is driven from the ExecutorDriver.
 type sidecarExecutor struct {
 	client          container.DockerClient
 	fetcher         SidecarFetcher
@@ -33,10 +43,13 @@ type sidecarExecutor struct {
 	// Populated during LaunchTask
 	containerConfig *docker.CreateContainerOptions
 	containerID     string
-	driver          *ExecutorDriver
+	driver          ExecDriver
 }
 
-func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfiguration, config Config) *sidecarExecutor {
+// newSidecarExecutor returns a properly configured sidecarExecutor.
+func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfiguration,
+	config Config) *sidecarExecutor {
+
 	return &sidecarExecutor{
 		client:          client,
 		fetcher:         &http.Client{Timeout: config.HttpTimeout},
@@ -64,7 +77,7 @@ func (exec *sidecarExecutor) logTaskEnv(taskInfo *mesos.TaskInfo, labels map[str
 
 // Send task status updates to Mesos via the executor driver
 func (exec *sidecarExecutor) sendStatus(status int64, taskID *mesos.TaskID) {
-	update := exec.driver.newStatus(*taskID)
+	update := exec.driver.NewStatus(*taskID)
 
 	switch status {
 	case TaskRunning:

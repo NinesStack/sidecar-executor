@@ -180,7 +180,8 @@ func (driver *ExecutorDriver) SendStatusUpdate(status mesos.TaskStatus) error {
 	return err
 }
 
-func (driver *ExecutorDriver) newStatus(id mesos.TaskID) mesos.TaskStatus {
+// NewStatus returns a properly configured Mesos.TaskStatus
+func (driver *ExecutorDriver) NewStatus(id mesos.TaskID) mesos.TaskStatus {
 	return mesos.TaskStatus{
 		TaskID:     id,
 		Source:     mesos.SOURCE_EXECUTOR.Enum(),
@@ -287,7 +288,7 @@ func (driver *ExecutorDriver) Run() error {
 			return nil
 		}
 
-		if time.Now().Sub(disconnectTime) > driver.cfg.RecoveryTimeout {
+		if time.Since(disconnectTime) > driver.cfg.RecoveryTimeout {
 			return fmt.Errorf(
 				"Failed to re-establish subscription with agent within %v, aborting",
 				driver.cfg.RecoveryTimeout,
