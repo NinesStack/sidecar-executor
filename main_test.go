@@ -229,9 +229,6 @@ func Test_logTaskEnv(t *testing.T) {
 	Convey("Logging Docker task env vars", t, func() {
 		output := bytes.NewBuffer([]byte{})
 		log.SetOutput(output) // Don't show the output
-		key := "env"
-		value := "BOCACCIO=author"
-		taskId := "my-task-id"
 
 		fetcher := &mockFetcher{}
 		client := &container.MockDockerClient{}
@@ -239,13 +236,13 @@ func Test_logTaskEnv(t *testing.T) {
 		exec.fetcher = fetcher
 
 		taskInfo := &mesos.TaskInfo{
-			TaskId: &mesos.TaskID{Value: &taskId},
+			TaskID: mesos.TaskID{Value: "my-task-id"},
 			Container: &mesos.ContainerInfo{
 				Docker: &mesos.ContainerInfo_DockerInfo{
-					Parameters: []*mesos.Parameter{
+					Parameters: []mesos.Parameter{
 						{
-							Key:   &key,
-							Value: &value,
+							Key:   "env",
+							Value: "BOCACCIO=author",
 						},
 					},
 				},
@@ -260,17 +257,14 @@ func Test_logTaskEnv(t *testing.T) {
 		})
 
 		Convey("has environment and service name if defined", func() {
-			key := "label"
-			svcName := "ServiceName=test-service"
-			envName := "EnvironmentName=dev"
-			taskInfo.Container.Docker.Parameters = []*mesos.Parameter{
+			taskInfo.Container.Docker.Parameters = []mesos.Parameter{
 				{
-					Key:   &key,
-					Value: &svcName,
+					Key:   "label",
+					Value: "ServiceName=test-service",
 				},
 				{
-					Key:   &key,
-					Value: &envName,
+					Key:   "label",
+					Value: "EnvironmentName=dev",
 				},
 			}
 
@@ -281,7 +275,7 @@ func Test_logTaskEnv(t *testing.T) {
 		})
 
 		Convey("leaves environment and service undefined if no labels are set", func() {
-			taskInfo.Container.Docker.Parameters = []*mesos.Parameter{}
+			taskInfo.Container.Docker.Parameters = []mesos.Parameter{}
 
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
@@ -290,8 +284,7 @@ func Test_logTaskEnv(t *testing.T) {
 		})
 
 		Convey("leaves version unset if it can't be parsed", func() {
-			image := "test-service"
-			taskInfo.Container.Docker.Image = &image
+			taskInfo.Container.Docker.Image = "test-service"
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
 			So(output.String(), ShouldNotContainSubstring, "SERVICE_VERSION=")
