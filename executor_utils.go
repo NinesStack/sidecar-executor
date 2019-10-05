@@ -253,7 +253,6 @@ func shouldCheckSidecar(containerConfig *docker.CreateContainerOptions) bool {
 	return true
 }
 
-
 // marshalJSON is a narrowly scoped interface used to allow logDebugJSON to
 // properly format most Mesos messages.
 type marshalJSON interface {

@@ -124,7 +124,6 @@ func httpResponse(status int, bodyStr string) *http.Response {
 func Test_sidecarStatus(t *testing.T) {
 	Convey("When handling Sidecar status", t, func() {
 		log.SetOutput(ioutil.Discard) // Don't show logged errors/warnings/etc
-
 		os.Setenv("TASK_HOST", "roncevalles")
 		fetcher := &mockFetcher{}
 
@@ -213,7 +212,7 @@ func Test_logConfig(t *testing.T) {
 		config, err := initConfig()
 		So(err, ShouldBeNil)
 
-		log.SetOutput(output) // Don't show the output
+		log.SetOutput(output) // Capture the output
 		logConfig(config)
 
 		v := reflect.ValueOf(config)
@@ -228,8 +227,7 @@ func Test_logConfig(t *testing.T) {
 func Test_logTaskEnv(t *testing.T) {
 	Convey("Logging Docker task env vars", t, func() {
 		output := bytes.NewBuffer([]byte{})
-		log.SetOutput(output) // Don't show the output
-
+		log.SetOutput(output) // Capture the output
 		fetcher := &mockFetcher{}
 		client := &container.MockDockerClient{}
 		exec := newSidecarExecutor(client, &docker.AuthConfiguration{}, Config{})
@@ -312,6 +310,7 @@ func Test_watchContainer(t *testing.T) {
 		So(err, ShouldBeNil)
 		config.SidecarBackoff = time.Duration(0)    // Don't wait to start health checking
 		config.SidecarRetryDelay = time.Duration(0) // Sidecar status should fail if ever checked
+		log.SetOutput(ioutil.Discard)               // Has to be here to take effect. Can't be higher up
 		exec := newSidecarExecutor(client, &docker.AuthConfiguration{}, config)
 
 		resultChan := make(chan error, 5)

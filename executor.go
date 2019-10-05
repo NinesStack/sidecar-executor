@@ -282,4 +282,3 @@ func (exec *sidecarExecutor) sidecarStatus(containerId string) error {
 func (exec *sidecarExecutor) StopDriver() {
 	exec.driver.Stop()
 }
-

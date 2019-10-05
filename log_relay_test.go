@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io/ioutil"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 )
 
 func Test_relayLogs(t *testing.T) {
+	log.SetLevel(log.FatalLevel)
 	Convey("relayLogs()", t, func() {
 		// Stub the docker client
 		dockerClient := &container.MockDockerClient{
@@ -22,6 +24,7 @@ func Test_relayLogs(t *testing.T) {
 
 		config, err := initConfig()
 		So(err, ShouldBeNil)
+		log.SetOutput(ioutil.Discard)
 		exec := newSidecarExecutor(dockerClient, &docker.AuthConfiguration{}, config)
 		exec.config.SendDockerLabels = []string{"Environment", "ServiceName"}
 
@@ -70,6 +73,7 @@ func Test_handleOneStream(t *testing.T) {
 		client := &container.MockDockerClient{}
 		config, err := initConfig()
 		So(err, ShouldBeNil)
+		log.SetOutput(ioutil.Discard)
 		exec := newSidecarExecutor(client, &docker.AuthConfiguration{}, config)
 		exec.fetcher = fetcher
 

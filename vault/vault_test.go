@@ -1,22 +1,26 @@
 package vault
 
 import (
-	"github.com/hashicorp/vault/api"
-	. "github.com/smartystreets/goconvey/convey"
 	"testing"
 
+	"github.com/hashicorp/vault/api"
+	log "github.com/sirupsen/logrus"
+	. "github.com/smartystreets/goconvey/convey"
+
 	"bytes"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 func Test_DecryptEnvs(t *testing.T) {
 	envVault := EnvVault{client: &mockVaultAPI{}}
 
 	Convey("EnvVault", t, func() {
+		Reset(func() { log.SetOutput(ioutil.Discard) })
 		Convey("isVaultPath() returns false for a normal env value", func() {
 			value := isVaultPath("value")
 			So(value, ShouldBeFalse)
