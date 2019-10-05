@@ -190,9 +190,8 @@ func (driver *ExecutorDriver) NewStatus(id mesos.TaskID) mesos.TaskStatus {
 	}
 }
 
-// StopDriver flags the event loop to exit on the next time around
-func (exec *sidecarExecutor) StopDriver() {
-	exec.driver.shouldQuit = true
+func (driver *ExecutorDriver) Stop() {
+	driver.shouldQuit = true
 }
 
 // NewExecutorDriver returns a properly configured ExecutorDriver

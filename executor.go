@@ -24,6 +24,8 @@ import (
 type ExecDriver interface {
 	NewStatus(id mesos.TaskID) mesos.TaskStatus
 	SendStatusUpdate(status mesos.TaskStatus) error
+	Stop()
+	Run() error
 }
 
 // A sidecarExecutor is the main executor of this application. It handles all
@@ -275,3 +277,9 @@ func (exec *sidecarExecutor) sidecarStatus(containerId string) error {
 
 	return nil
 }
+
+// StopDriver flags the event loop to exit on the next time around
+func (exec *sidecarExecutor) StopDriver() {
+	exec.driver.Stop()
+}
+
