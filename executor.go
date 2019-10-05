@@ -79,6 +79,8 @@ func (exec *sidecarExecutor) sendStatus(status int64, taskID *mesos.TaskID) {
 
 	if err := exec.driver.SendStatusUpdate(update); err != nil {
 		log.Errorf("Error sending status update %s", err.Error())
+		// Panic is the only way we can really let the Agent know something
+		// is drastically wrong now.
 		panic(err.Error())
 	}
 }

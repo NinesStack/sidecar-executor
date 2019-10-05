@@ -24,7 +24,7 @@ import (
 
 const (
 	agentAPIPath = "/api/v1/executor"
-	httpTimeout  = 10 * time.Second
+	driverHttpTimeout  = 10 * time.Second
 )
 
 // A TaskDelegate is responsible for launching and killing tasks
@@ -57,7 +57,8 @@ func (driver *ExecutorDriver) maybeReconnect() <-chan struct{} {
 	return nil
 }
 
-// unacknowledgedTasks generates the value of the UnacknowledgedTasks field of a Subscribe call.
+// unacknowledgedTasks generates the value of the UnacknowledgedTasks field of
+// a Subscribe call.
 func (driver *ExecutorDriver) unacknowledgedTasks() (result []mesos.TaskInfo) {
 	if n := len(driver.unackedTasks); n > 0 {
 		result = make([]mesos.TaskInfo, 0, n)
@@ -68,7 +69,8 @@ func (driver *ExecutorDriver) unacknowledgedTasks() (result []mesos.TaskInfo) {
 	return
 }
 
-// unacknowledgedUpdates generates the value of the UnacknowledgedUpdates field of a Subscribe call.
+// unacknowledgedUpdates generates the value of the UnacknowledgedUpdates field
+// of a Subscribe call.
 func (driver *ExecutorDriver) unacknowledgedUpdates() (result []executor.Call_Update) {
 	if n := len(driver.unackedUpdates); n > 0 {
 		result = make([]executor.Call_Update, 0, n)
@@ -79,6 +81,7 @@ func (driver *ExecutorDriver) unacknowledgedUpdates() (result []executor.Call_Up
 	return
 }
 
+// eventLoop is the main handler event loop of the driver. Called from Run()
 func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 	h events.Handler) (err error) {
 
@@ -202,7 +205,7 @@ func NewExecutorDriver(mesosConfig *config.Config, delegate TaskDelegate) *Execu
 	http := httpcli.New(
 		httpcli.Endpoint(agentApiUrl.String()),
 		httpcli.Codec(codecs.ByMediaType[codecs.MediaTypeProtobuf]),
-		httpcli.Do(httpcli.With(httpcli.Timeout(httpTimeout))),
+		httpcli.Do(httpcli.With(httpcli.Timeout(driverHttpTimeout))),
 	)
 
 	callOptions := executor.CallOptions{
@@ -230,7 +233,8 @@ func NewExecutorDriver(mesosConfig *config.Config, delegate TaskDelegate) *Execu
 	return driver
 }
 
-// RunDriver runs the main event loop for the executor
+// Run makes sure we're subscribed to events, and restarts the event loop until
+// we're told to stop.
 func (driver *ExecutorDriver) Run() error {
 	shouldReconnect := driver.maybeReconnect()
 

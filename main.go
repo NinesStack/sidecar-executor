@@ -233,21 +233,24 @@ func main() {
 	dockerAuth := getDockerAuthConfig(config.DockerRepository)
 	scExec := newSidecarExecutor(dockerClient, &dockerAuth, config)
 
+	// The Mesos lib has its own env configuration, so load that up as well.
+	// This supports all the MESOS_* env vars passed by the agent on startup.
 	cfg, err := mesosconfig.FromEnv()
 	if err != nil {
 		log.Fatal("failed to load configuration: " + err.Error())
 	}
-	log.Printf("configuration loaded: %+v", cfg)
 
+	// Handle UNIX signals we need to be aware of
 	go handleSignals(scExec)
 
 	log.Info("Executor process has started")
 
+	// Configure the Mesos driver. This handles the lifecycle and events
+	// that come from the Agent.
 	scExec.driver = NewExecutorDriver(&cfg, scExec)
 	err = scExec.driver.Run()
-
 	if err != nil {
-		log.Errorf("EXITING: Error from executor driver: %s", err)
+		log.Errorf("Immediate Exit: Error from executor driver: %s", err)
 		return
 	}
 
