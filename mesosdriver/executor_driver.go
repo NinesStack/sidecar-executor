@@ -1,4 +1,4 @@
-package main
+package mesosdriver
 
 import (
 	"context"
@@ -85,7 +85,7 @@ func (driver *ExecutorDriver) unacknowledgedUpdates() (result []executor.Call_Up
 func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 	h events.Handler) (err error) {
 
-	log.Info("Listening for events from agent")
+	log.Info("Entering event loop")
 	ctx := context.TODO()
 
 	for err == nil && !driver.shouldQuit {
@@ -117,11 +117,13 @@ func (driver *ExecutorDriver) buildEventHandler() events.Handler {
 		},
 
 		executor.Event_KILL: func(_ context.Context, e *executor.Event) error {
+			log.Infof("Received kill from Mesos for %s", e.Kill.TaskID.Value)
 			driver.delegate.KillTask(&e.Kill.TaskID)
 			return nil
 		},
 
 		executor.Event_ACKNOWLEDGED: func(_ context.Context, e *executor.Event) error {
+			log.Infof("Acknowledged: %s", e.Acknowledged.TaskID.Value)
 			delete(driver.unackedTasks, e.Acknowledged.TaskID)
 			delete(driver.unackedUpdates, string(e.Acknowledged.UUID))
 			return nil
@@ -178,6 +180,21 @@ func (driver *ExecutorDriver) SendStatusUpdate(status mesos.TaskStatus) error {
 		driver.unackedUpdates[string(status.UUID)] = *upd.Update
 	}
 	return err
+}
+
+// marshalJSON is a narrowly scoped interface used to allow logDebugJSON to
+// properly format most Mesos messages.
+type marshalJSON interface {
+	MarshalJSON() ([]byte, error)
+}
+
+// logDebugJson prints failed messages to the logger when we can't talk to the
+// Agent correctly.
+func logDebugJSON(mk marshalJSON) {
+	b, err := mk.MarshalJSON()
+	if err == nil {
+		log.Debug(string(b))
+	}
 }
 
 // NewStatus returns a properly configured Mesos.TaskStatus
@@ -265,7 +282,7 @@ func (driver *ExecutorDriver) Run() error {
 				return
 			}
 
-			// we're officially connected, start decoding events
+			// We're connected, start decoding events
 			err = driver.eventLoop(resp, handler)
 			disconnectTime = time.Now()
 

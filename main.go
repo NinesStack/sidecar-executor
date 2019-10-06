@@ -15,6 +15,7 @@ import (
 
 	"fmt"
 
+	"github.com/Nitro/sidecar-executor/mesosdriver"
 	"github.com/Nitro/sidecar/service"
 	"github.com/fsouza/go-dockerclient"
 	mesosconfig "github.com/mesos/mesos-go/api/v1/lib/executor/config"
@@ -247,7 +248,7 @@ func main() {
 
 	// Configure the Mesos driver. This handles the lifecycle and events
 	// that come from the Agent.
-	scExec.driver = NewExecutorDriver(&cfg, scExec)
+	scExec.driver = mesosdriver.NewExecutorDriver(&cfg, scExec)
 	err = scExec.driver.Run()
 	if err != nil {
 		log.Errorf("Immediate Exit: Error from executor driver: %s", err)
