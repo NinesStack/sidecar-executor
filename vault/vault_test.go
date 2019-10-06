@@ -1,25 +1,23 @@
 package vault
 
 import (
-	"testing"
-
-	"github.com/hashicorp/vault/api"
-	log "github.com/sirupsen/logrus"
-	. "github.com/smartystreets/goconvey/convey"
-
 	"bytes"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
+	"testing"
 
+	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func Test_DecryptEnvs(t *testing.T) {
 	envVault := EnvVault{client: &mockVaultAPI{}}
 
-	Convey("EnvVault", t, func() {
+	Convey("When working with EnvVault", t, func() {
 		Reset(func() { log.SetOutput(ioutil.Discard) })
 		Convey("isVaultPath() returns false for a normal env value", func() {
 			value := isVaultPath("value")
@@ -41,44 +39,46 @@ func Test_DecryptEnvs(t *testing.T) {
 			So(value, ShouldBeTrue)
 		})
 
-		Convey("ReadSecretValue fails for an invalid key", func() {
-			value, err := envVault.ReadSecretValue("invalid path")
-			So(value, ShouldBeEmpty)
-			So(err.Error(), ShouldContainSubstring, "invalid path")
-
-		})
-
-		Convey("ReadSecretValue fails for key not found", func() {
-			value, err := envVault.ReadSecretValue("vault://secure/notFoundKey")
-			So(value, ShouldBeEmpty)
-			So(err.Error(), ShouldContainSubstring, "Path 'secure/notFoundKey' not found")
-		})
-
-		Convey("ReadSecretValue returns a secured value for a valid key", func() {
-			securedValue, err := envVault.ReadSecretValue("vault://secure/validKey")
-			So(err, ShouldBeNil)
-			So(securedValue, ShouldEqual, "secret_value")
-
-		})
-
-		Convey("ReadSecretValue returns a secured value for a valid sub-key", func() {
-			securedValue, err := envVault.ReadSecretValue("vault://secure/validKeyWithSub?key=subkey")
-			So(err, ShouldBeNil)
-			So(securedValue, ShouldEqual, "some_sub_value")
-		})
-
-		Convey("ReadSecretValue returns an error on a missing sub-key", func() {
-			securedValue, err := envVault.ReadSecretValue("vault://secure/validKeyWithSub?key=missing")
-			So(err.Error(), ShouldContainSubstring, "Value for path 'secure/validKeyWithSub' not found")
-			So(securedValue, ShouldEqual, "")
-		})
-
-		Convey("Process all environment vars with Vault path", func() {
+		Convey("It processes all environment vars with Vault path", func() {
 			envs := []string{"Key1=Value1", "Key2=Value2", "Key3=vault://secure/validKey"}
 			expected := []string{"Key1=Value1", "Key2=Value2", "Key3=secret_value"}
 			securedValue, err := envVault.DecryptAllEnv(envs)
 			So(err, ShouldBeNil)
 			So(securedValue, ShouldResemble, expected)
+		})
+
+		Convey("ReadsecretValue", func() {
+			Convey("Fails for an invalid key", func() {
+				value, err := envVault.ReadSecretValue("invalid path")
+				So(value, ShouldBeEmpty)
+				So(err.Error(), ShouldContainSubstring, "invalid path")
+
+			})
+
+			Convey("Fails for key not found", func() {
+				value, err := envVault.ReadSecretValue("vault://secure/notFoundKey")
+				So(value, ShouldBeEmpty)
+				So(err.Error(), ShouldContainSubstring, "Path 'secure/notFoundKey' not found")
+			})
+
+			Convey("Returns a secured value for a valid key", func() {
+				securedValue, err := envVault.ReadSecretValue("vault://secure/validKey")
+				So(err, ShouldBeNil)
+				So(securedValue, ShouldEqual, "secret_value")
+
+			})
+
+			Convey("Returns a secured value for a valid sub-key", func() {
+				securedValue, err := envVault.ReadSecretValue("vault://secure/validKeyWithSub?key=subkey")
+				So(err, ShouldBeNil)
+				So(securedValue, ShouldEqual, "some_sub_value")
+			})
+
+			Convey("Returns an error on a missing sub-key", func() {
+				securedValue, err := envVault.ReadSecretValue("vault://secure/validKeyWithSub?key=missing")
+				So(err.Error(), ShouldContainSubstring, "Value for path 'secure/validKeyWithSub' not found")
+				So(securedValue, ShouldEqual, "")
+			})
 		})
 	})
 }

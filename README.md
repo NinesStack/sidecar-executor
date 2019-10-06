@@ -204,6 +204,29 @@ with `EXECUTOR_`.
    with some fields defined in Docker labels? This is a comma-separated list
    of labels. They will be sent with the field name being the Docker label name.
 
+Vault Configuration
+-------------------
+
+Because the executor uses the Vault library, it lets the Vault client configure
+itself from its own environment settings. You can look these up in the Vault
+[source](https://github.com/hashicorp/vault/blob/master/api/client.go#L28) if
+you'd like to see them all. The executor adds a couple of others to better
+control the Vault integration. You should specify at least the following:
+
+ * `VAULT_ADDR` - URL of the Vault server.
+ * `VAULT_MAX_RETRIES` - API retries before Vault fails.
+ * `VAULT_TOKEN` - Optional if specified in a file or using userpass.
+ * `VAULT_TOKEN_FILE` - Where to cache Vault tokens between calls to the executor
+   on the same host.
+ * `VAULT_TTL` - The TTL in seconds of the Vault Token we'll have issued note that
+   the grace period is one hour so shorter than 1 hour is not possible.
+
+**WARNING** If you are using Vault, you _really_ want to have the executor cache
+tokens to a `VAULT_TOKEN_FILE`. If not you can build up quite a lot of tokens
+in Vault, and that doesn't work well. Especially in a fast job failure scenario
+where executors running on multiple machines might be generating tokens
+constantly.
+
 Configuring Docker Connectivity
 -------------------------------
 
