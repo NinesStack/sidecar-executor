@@ -9,12 +9,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/Nitro/sidecar/service"
-	"github.com/fsouza/go-dockerclient"
+	docker "github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/pborman/uuid"
 	director "github.com/relistan/go-director"
@@ -48,6 +49,7 @@ func Test_shouldCheckSidecar(t *testing.T) {
 }
 
 type mockMesosDriver struct {
+	sync.Mutex
 	receivedUpdate *mesos.TaskStatus
 	isStopped      bool
 }
@@ -62,7 +64,9 @@ func (d *mockMesosDriver) NewStatus(id mesos.TaskID) mesos.TaskStatus {
 }
 
 func (d *mockMesosDriver) SendStatusUpdate(status mesos.TaskStatus) error {
+	d.Lock()
 	d.receivedUpdate = &status
+	d.Unlock()
 	return nil
 }
 
@@ -71,7 +75,9 @@ func (d *mockMesosDriver) Run() error {
 }
 
 func (d *mockMesosDriver) Stop() {
+	d.Lock()
 	d.isStopped = true
+	d.Unlock()
 }
 
 type mockVault struct {
@@ -460,12 +466,12 @@ func Test_ExecutorCallbacks(t *testing.T) {
 
 			Convey("stops draining the service if the container exits prematurely", func() {
 				exec.config.SidecarDrainingDuration = 100 * time.Millisecond
-				exec.watcherDoneChan = make(chan struct{})
 				go exec.watchContainer(dummyContainerId, shouldCheckSidecar(exec.containerConfig))
 				go exec.monitorTask(dummyContainerId, &taskInfo)
 
 				exec.KillTask(&dummyTaskID)
-				So(<-exec.watcherDoneChan, ShouldResemble, struct{}{})
+				exec.watcherWg.Wait()
+				// Just make sure we don't block
 			})
 
 			Convey("tries multiple times to drain the service", func() {

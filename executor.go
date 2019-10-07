@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"fmt"
@@ -13,7 +14,7 @@ import (
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/Nitro/sidecar-executor/vault"
 	"github.com/Nitro/sidecar/service"
-	"github.com/fsouza/go-dockerclient"
+	docker "github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/relistan/go-director"
 	log "github.com/sirupsen/logrus"
@@ -35,7 +36,7 @@ type sidecarExecutor struct {
 	client          container.DockerClient
 	fetcher         SidecarFetcher
 	watchLooper     director.Looper
-	watcherDoneChan chan struct{}
+	watcherWg       sync.WaitGroup
 	logsQuitChan    chan struct{}
 	dockerAuth      *docker.AuthConfiguration
 	failCount       int
@@ -55,7 +56,6 @@ func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfigur
 	return &sidecarExecutor{
 		client:          client,
 		fetcher:         &http.Client{Timeout: config.HttpTimeout},
-		watcherDoneChan: make(chan struct{}),
 		dockerAuth:      auth,
 		vault:           vault.NewDefaultVault(),
 		config:          config,
