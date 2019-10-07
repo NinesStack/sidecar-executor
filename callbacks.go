@@ -108,7 +108,7 @@ func (exec *sidecarExecutor) KillTask(taskID *mesos.TaskID) {
 	log.Infof("Killing task: %s", taskID.Value)
 
 	// Stop watching the container so we don't send the wrong task status
-	go func() { exec.watchLooper.Quit() }()
+	exec.watchLooper.Quit() // Runs in background
 
 	// Instruct Sidecar to set the status of the service to DRAINING
 	exec.notifyDrain()
