@@ -50,7 +50,7 @@ func Test_relayLogs(t *testing.T) {
 
 			exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, result)
 
-			resultBytes, _ := ioutil.ReadFile("/tmp/asdf")
+			resultBytes, _ := ioutil.ReadFile(tmpfn)
 			So(string(resultBytes), ShouldContainSubstring, "some stdout text")
 			So(string(resultBytes), ShouldContainSubstring, "some stderr text")
 			result.Close()
@@ -71,7 +71,7 @@ func Test_relayLogs(t *testing.T) {
 			exec.relayLogs(quitChan, "deadbeef123123123", labels, result)
 			exec.config.ContainerLogsStdout = true
 
-			resultBytes, _ := ioutil.ReadFile("/tmp/asdf1")
+			resultBytes, _ := ioutil.ReadFile(tmpfn)
 			So(string(resultBytes), ShouldContainSubstring, `"Environment":"prod"`)
 			So(string(resultBytes), ShouldContainSubstring, `"ServiceName":"beowulf"`)
 			result.Close()
