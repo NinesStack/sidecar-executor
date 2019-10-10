@@ -13,7 +13,7 @@ import (
 
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/fsouza/go-dockerclient"
-	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
+	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -21,11 +21,12 @@ import (
 // complete. When it completes, it handles the Docker and Mesos interactions.
 func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInfo) {
 	log.Infof("Monitoring Mesos task %s for container %s",
-		*taskInfo.TaskId.Value,
+		taskInfo.TaskID.Value,
 		cntnrId,
 	)
 
-	containerName := container.GetContainerName(taskInfo.TaskId)
+	exec.watcherWg.Add(1)
+	containerName := container.GetContainerName(&taskInfo.TaskID)
 	// Wait on the watchLooper to return a status
 	err := exec.watchLooper.Wait()
 	if err != nil {
@@ -39,11 +40,12 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		exec.copyLogs(containerName)
 		// Notify Mesos
 		exec.failTask(taskInfo)
+		exec.watcherWg.Done()
 		return
 	}
 
 	// Release any goroutines waiting for the watcher to complete
-	close(exec.watcherDoneChan)
+	exec.watcherWg.Done()
 
 	log.Info("Task completed: ", taskInfo.GetName())
 	exec.finishTask(taskInfo)
@@ -229,12 +231,19 @@ func (exec *sidecarExecutor) notifyDrain() {
 		time.Sleep(exec.config.SidecarRetryDelay)
 	}
 
+	// Bridge the watcher waitgroup to a channel
+	watcherDoneChan := make(chan struct{})
+	go func() {
+		exec.watcherWg.Wait()
+		close(watcherDoneChan)
+	}()
+
 	ticker := time.NewTicker(exec.config.SidecarDrainingDuration)
 	defer ticker.Stop()
 	select {
 	case <-ticker.C:
 		// Finished waiting SidecarDrainingDuration
-	case <-exec.watcherDoneChan:
+	case <-watcherDoneChan:
 		// Bail out early if the watcher exits in the mean time
 	}
 }

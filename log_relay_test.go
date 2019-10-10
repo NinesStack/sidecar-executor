@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +16,7 @@ import (
 )
 
 func Test_relayLogs(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
 	Convey("relayLogs()", t, func() {
 		// Stub the docker client
 		dockerClient := &container.MockDockerClient{
@@ -22,6 +26,7 @@ func Test_relayLogs(t *testing.T) {
 
 		config, err := initConfig()
 		So(err, ShouldBeNil)
+		log.SetOutput(ioutil.Discard)
 		exec := newSidecarExecutor(dockerClient, &docker.AuthConfiguration{}, config)
 		exec.config.SendDockerLabels = []string{"Environment", "ServiceName"}
 
@@ -29,23 +34,31 @@ func Test_relayLogs(t *testing.T) {
 		fetcher := &mockFetcher{}
 		exec.fetcher = fetcher
 
-		// Capture logging output
-		var result bytes.Buffer
-
 		quitChan := make(chan struct{})
+		tmpdir, _ := ioutil.TempDir("", "testing")
+		tmpfn := filepath.Join(tmpdir, "log-relay")
+
+		Reset(func() { os.RemoveAll(tmpdir) })
 
 		Convey("handles both stderr and stdout", func() {
+			// Capture logging output
+			result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
+
 			// Janky that we have to sleep here, but not a good way to
 			// sync on this.
-			go func() { time.Sleep(1 * time.Millisecond); close(quitChan) }()
+			go func() { time.Sleep(20 * time.Millisecond); close(quitChan) }()
 
-			exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, &result)
+			exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, result)
 
-			So(result.String(), ShouldContainSubstring, "some stdout text")
-			So(result.String(), ShouldContainSubstring, "some stderr text")
+			resultBytes, _ := ioutil.ReadFile(tmpfn)
+			So(string(resultBytes), ShouldContainSubstring, "some stdout text")
+			So(string(resultBytes), ShouldContainSubstring, "some stderr text")
+			result.Close()
 		})
 
 		Convey("includes the requested Docker labels", func() {
+			result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
+
 			// Janky that we have to sleep here, but not a good way to
 			// sync on this.
 			go func() { time.Sleep(1 * time.Millisecond); close(quitChan) }()
@@ -55,11 +68,13 @@ func Test_relayLogs(t *testing.T) {
 				"ServiceName": "beowulf",
 			}
 
-			exec.relayLogs(quitChan, "deadbeef123123123", labels, &result)
+			exec.relayLogs(quitChan, "deadbeef123123123", labels, result)
 			exec.config.ContainerLogsStdout = true
 
-			So(result.String(), ShouldContainSubstring, `"Environment":"prod"`)
-			So(result.String(), ShouldContainSubstring, `"ServiceName":"beowulf"`)
+			resultBytes, _ := ioutil.ReadFile(tmpfn)
+			So(string(resultBytes), ShouldContainSubstring, `"Environment":"prod"`)
+			So(string(resultBytes), ShouldContainSubstring, `"ServiceName":"beowulf"`)
+			result.Close()
 		})
 	})
 }
@@ -70,6 +85,7 @@ func Test_handleOneStream(t *testing.T) {
 		client := &container.MockDockerClient{}
 		config, err := initConfig()
 		So(err, ShouldBeNil)
+		log.SetOutput(ioutil.Discard)
 		exec := newSidecarExecutor(client, &docker.AuthConfiguration{}, config)
 		exec.fetcher = fetcher
 

@@ -252,7 +252,7 @@
   version = "v1.0.1"
 
 [[projects]]
-  digest = "1:cd10c5ce4908e8ca88768774afc1d30968d8b5de071f6cb4bc0327448e2ef767"
+  digest = "1:e7614d2752e3397f0e8c6d9888ab0c756ab42c3d12c48bdf155353acf9e9ee81"
   name = "github.com/mesos/mesos-go"
   packages = [
     "api/v0/executor",
@@ -265,8 +265,8 @@
     "api/v0/upid",
   ]
   pruneopts = "UT"
-  revision = "7ec2a64a36fe5bc22d3701558bc9aa1ac6acfac5"
-  version = "v0.0.8"
+  revision = "3c2ae7f09d530e0ecd62acd2c31a4d73ed9bdf55"
+  version = "v0.0.10"
 
 [[projects]]
   digest = "1:78bbb1ba5b7c3f2ed0ea1eab57bdd3859aec7e177811563edc41198a760b06af"
@@ -373,12 +373,9 @@
   revision = "256dc444b735e061061cf46c809487313d5b0065"
 
 [[projects]]
-  digest = "1:d567a75ca7997f273776fc257f338d329c2e5877a8105ff8bd0234f75d45d4c0"
+  digest = "1:69b1cc331fca23d702bd72f860c6a647afd0aa9fcbc1d0659b1365e26546dd70"
   name = "github.com/sirupsen/logrus"
-  packages = [
-    ".",
-    "hooks/syslog",
-  ]
+  packages = ["."]
   pruneopts = "UT"
   revision = "bcd833dfe83d3cebad139e4a29ed79cb2318bf95"
   version = "v1.2.0"
@@ -484,7 +481,6 @@
     "github.com/relistan/envconfig",
     "github.com/relistan/go-director",
     "github.com/sirupsen/logrus",
-    "github.com/sirupsen/logrus/hooks/syslog",
     "github.com/smartystreets/goconvey/convey",
   ]
   solver-name = "gps-cdcl"

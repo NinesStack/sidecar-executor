@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/fsouza/go-dockerclient"
-	mesos "github.com/mesos/mesos-go/api/v0/mesosproto"
+	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	log "github.com/sirupsen/logrus"
 	. "github.com/smartystreets/goconvey/convey"
 )
@@ -28,7 +28,7 @@ func Test_PullImage(t *testing.T) {
 		taskInfo := &mesos.TaskInfo{
 			Container: &mesos.ContainerInfo{
 				Docker: &mesos.ContainerInfo_DockerInfo{
-					Image: &image,
+					Image: image,
 				},
 			},
 		}
@@ -64,7 +64,7 @@ func Test_CheckImage(t *testing.T) {
 		taskInfo := &mesos.TaskInfo{
 			Container: &mesos.ContainerInfo{
 				Docker: &mesos.ContainerInfo_DockerInfo{
-					Image: &image,
+					Image: image,
 				},
 			},
 		}
@@ -81,8 +81,7 @@ func Test_CheckImage(t *testing.T) {
 		})
 
 		Convey("handles missing images", func() {
-			wrong := "wrong"
-			taskInfo.Container.Docker.Image = &wrong
+			taskInfo.Container.Docker.Image = "wrong"
 			So(CheckImage(dockerClient, taskInfo), ShouldBeFalse)
 		})
 
@@ -148,36 +147,34 @@ func Test_ConfigGeneration(t *testing.T) {
 
 		// The whole structure is full of pointers, so we have to define
 		// a bunch of things so we can take their address.
-		taskId := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
-		uuidTaskId := "f317e960-8579-5258-95c8-96ccca14f317" // UUID based on ssh1(taskId)
+		taskID := "nginx-2392676-1479746266455-1-dev_singularity_sick_sing-DEFAULT"
+		uuidTaskID := "f317e960-8579-5258-95c8-96ccca14f317" // UUID based on ssh1(taskID)
+
 		image := "foo/foo:1.0.0"
 		command := []string{"date"}
-		cpus := "cpus"
-		cpusValue := float64(0.5)
-		memory := "mem"
-		memoryValue := float64(128)
 
-		env := "env"
+		cpus := float64(0.5)
+		memory := float64(128)
+
 		envValue := "SOMETHING=123=123"
-		label := "label"
 		labelValue := "ANYTHING=123=123"
-		capAdd := "cap-add"
 		capAddValue := "NET_ADMIN"
-		volumeDriver := "volume-driver"
 		volumeDriverValue := "driver_test"
-		capDrop := "cap-drop"
 		capDropValue := "NET_ADMIN"
 
 		svcName := "dev-test-app"
 		svcNameLabel := "ServiceName=" + svcName
+
 		envName := "dev"
 		envNameLabel := "EnvironmentName=" + envName
 
 		host := mesos.ContainerInfo_DockerInfo_HOST
 
 		port := uint32(8080)
+
 		port2 := uint32(443)
 		port2_hp := uint32(10270)
+
 		port3 := uint32(9090)
 		port3_hp := uint32(10271)
 		port3Proto := "tcp,udp"
@@ -186,90 +183,90 @@ func Test_ConfigGeneration(t *testing.T) {
 		v1_hp := "/tmp/elsewhere"
 		v2_cp := "/tmp/foo"
 		v2_hp := "/tmp/bar"
-		mode := mesos.Volume_RO
+		mode := mesos.RO
 
 		hostname := "beowulf.example.com"
 		hostKey := "TASK_HOST"
 
 		taskInfo := &mesos.TaskInfo{
-			TaskId: &mesos.TaskID{Value: &taskId},
+			TaskID: mesos.TaskID{Value: taskID},
 			Container: &mesos.ContainerInfo{
 				Docker: &mesos.ContainerInfo_DockerInfo{
-					Image:   &image,
+					Image:   image,
 					Network: &host,
-					Parameters: []*mesos.Parameter{
+					Parameters: []mesos.Parameter{
 						{
-							Key:   &env,
-							Value: &envValue,
+							Key:   "env",
+							Value: envValue,
 						},
 						{
-							Key:   &label,
-							Value: &labelValue,
+							Key:   "label",
+							Value: labelValue,
 						},
 						{
-							Key:   &label,
-							Value: &svcNameLabel,
+							Key:   "label",
+							Value: svcNameLabel,
 						},
 						{
-							Key:   &label,
-							Value: &envNameLabel,
+							Key:   "label",
+							Value: envNameLabel,
 						},
 						{
-							Key:   &capAdd,
-							Value: &capAddValue,
+							Key:   "cap-add",
+							Value: capAddValue,
 						},
 						{
-							Key:   &capDrop,
-							Value: &capDropValue,
+							Key:   "cap-drop",
+							Value: capDropValue,
 						},
 						{
-							Key:   &volumeDriver,
-							Value: &volumeDriverValue,
+							Key:   "volume-driver",
+							Value: volumeDriverValue,
 						},
 					},
-					PortMappings: []*mesos.ContainerInfo_DockerInfo_PortMapping{
+					PortMappings: []mesos.ContainerInfo_DockerInfo_PortMapping{
 						{
-							ContainerPort: &port,
+							ContainerPort: port,
 						},
 						{
-							ContainerPort: &port2,
-							HostPort:      &port2_hp,
+							ContainerPort: port2,
+							HostPort:      port2_hp,
 						},
 						{
-							ContainerPort: &port3,
-							HostPort:      &port3_hp,
+							ContainerPort: port3,
+							HostPort:      port3_hp,
 							Protocol:      &port3Proto,
 						},
 					},
 				},
-				Volumes: []*mesos.Volume{
+				Volumes: []mesos.Volume{
 					{
 						Mode:          &mode,
-						ContainerPath: &v1_cp,
+						ContainerPath: v1_cp,
 						HostPath:      &v1_hp,
 					},
 					{
-						ContainerPath: &v2_cp,
+						ContainerPath: v2_cp,
 						HostPath:      &v2_hp,
 					},
 				},
 			},
-			Resources: []*mesos.Resource{
+			Resources: []mesos.Resource{
 				{
-					Name:   &cpus,
-					Scalar: &mesos.Value_Scalar{Value: &cpusValue},
+					Name:   "cpus",
+					Scalar: &mesos.Value_Scalar{Value: cpus},
 				},
 				{
-					Name:   &memory,
-					Scalar: &mesos.Value_Scalar{Value: &memoryValue},
+					Name:   "mem",
+					Scalar: &mesos.Value_Scalar{Value: memory},
 				},
 			},
 			Executor: &mesos.ExecutorInfo{
 				Command: &mesos.CommandInfo{
 					Environment: &mesos.Environment{
-						Variables: []*mesos.Environment_Variable{
+						Variables: []mesos.Environment_Variable{
 							{
-								Name:  &hostKey,
+								Name:  hostKey,
 								Value: &hostname,
 							},
 						},
@@ -285,7 +282,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		optsForced := ConfigForTask(taskInfo, true, true, []string{})
 
 		Convey("gets the name from the task ID", func() {
-			So(opts.Name, ShouldEqual, "mesos-"+uuidTaskId)
+			So(opts.Name, ShouldEqual, "mesos-"+uuidTaskID)
 		})
 
 		Convey("properly calculates the CPU limit", func() {
