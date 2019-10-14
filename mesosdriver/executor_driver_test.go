@@ -8,6 +8,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
+
 type MockDelegate struct{}
 
 func (m *MockDelegate) LaunchTask(taskInfo *mesos.TaskInfo) {}

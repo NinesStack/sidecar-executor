@@ -1,8 +1,24 @@
+// vault handles the Hashicorp Vault secret store. It uses the default Vault
+// environment variables for configuration and adds a couple more. If you
+// supply a token by some means, it will use that. If not, it will either fetch
+// a token from a specified file, or fall back to userpass auth.
+//
+// You should provide at least the following:
+//
+//  * VAULT_ADDR - URL of the Vault server
+//  * VAULT_MAX_RETRIES - API retries before Vault fails
+//  * VAULT_TOKEN - Optional if specified in a file or using userpass
+//  * VAULT_TOKEN_FILE - Where to cache Vault tokens between calls to the
+//    executor on the same host.
+//  * VAULT_TTL - The TTL in seconds of the Vault Token we'll have issued
+//    note that the grace period is one hour so shorter than 1 hour is not
+//    possible.
 package vault
 
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/hashicorp/vault/api"
@@ -38,7 +54,16 @@ func NewDefaultVault() EnvVault {
 		log.Warnf("Unable to load Environment vars: %s", err)
 	}
 	log.Infof("Vault address '%s' ", conf.Address)
+
 	vaultClient, _ := api.NewClient(conf)
+
+	if os.Getenv("VAULT_TOKEN") == "" {
+		err := GetToken(&vaultTokenAuthHandler{client: vaultClient})
+		if err != nil {
+			log.Errorf("Failure authenticating with Vault: %s", err)
+		}
+	}
+
 	return EnvVault{client: vaultClient}
 }
 
