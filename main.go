@@ -108,7 +108,7 @@ func logConfig(config Config) {
 
 		// We don't want to log the Vault token since it can be used to log in
 		// as us. But it's ok to log VAULT_TOKEN_FILE, so we work around that.
-		if strings.HasPrefix(setting, "VAULT_TOKEN=") {
+		if shouldSkipLogging(setting) {
 			continue
 		}
 
@@ -122,6 +122,12 @@ func logConfig(config Config) {
 		}
 	}
 	log.Infof("---------------------------------------")
+}
+
+func shouldSkipLogging(setting string) bool {
+	return strings.HasPrefix(setting, "VAULT_TOKEN=") ||
+		strings.HasPrefix(setting, "VAULT_USERNAME=") ||
+		strings.HasPrefix(setting, "VAULT_PASSWORD=")
 }
 
 // Try to find the Docker registry auth information. This will look in the usual
