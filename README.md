@@ -119,6 +119,7 @@ RelaySyslog             | false
 SyslogAddr              | 127.0.0.1:514
 ContainerLogsStdout     | false
 SendDockerLabels        | []
+LogHostname             | System Hostname
 
 All of the environment variables are of the form `EXECUTOR_SIDECAR_RETRY_DELAY`
 where all of the CamelCased words are split apart, and each setting is prefixed
@@ -203,6 +204,10 @@ with `EXECUTOR_`.
  * **SendDockerLabels**: If `RelaySyslog` is true, should we augment JSON logs
    with some fields defined in Docker labels? This is a comma-separated list
    of labels. They will be sent with the field name being the Docker label name.
+
+ * **LogHostname**: When relaying logs, we will add this as the `Hostname`
+   field. Defaults to the OS hostname and can be overridden with `LOG_HOSTNAME`
+   in the environment.
 
 Vault Configuration
 -------------------
