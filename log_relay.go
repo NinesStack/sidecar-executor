@@ -33,14 +33,17 @@ func (exec *sidecarExecutor) configureLogRelay(containerId string,
 	})
 	syslogger.SetOutput(output)
 
+	// Add one to the labels length to account for hostname
+	fields := make(log.Fields, len(exec.config.SendDockerLabels) + 1)
+
 	// Loop through the fields we're supposed to pass, and add them from the
 	// Docker labels on this container
-	fields := make(log.Fields, len(exec.config.SendDockerLabels))
 	for _, field := range exec.config.SendDockerLabels {
 		if val, ok := labels[field]; ok {
 			fields[field] = val
 		}
 	}
+	fields["Hostname"] = exec.config.LogHostname
 
 	return syslogger.WithFields(fields)
 }

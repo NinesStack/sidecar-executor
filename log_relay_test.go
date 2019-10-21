@@ -76,6 +76,26 @@ func Test_relayLogs(t *testing.T) {
 			So(string(resultBytes), ShouldContainSubstring, `"ServiceName":"beowulf"`)
 			result.Close()
 		})
+
+		Convey("sends the hostname", func() {
+			result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
+
+			// Janky that we have to sleep here, but not a good way to
+			// sync on this.
+			go func() { time.Sleep(1 * time.Millisecond); close(quitChan) }()
+
+			labels := map[string]string{
+				"Environment": "prod",
+				"ServiceName": "beowulf",
+			}
+
+			exec.relayLogs(quitChan, "deadbeef123123123", labels, result)
+			exec.config.ContainerLogsStdout = true
+
+			resultBytes, _ := ioutil.ReadFile(tmpfn)
+			So(exec.config.LogHostname, ShouldNotBeEmpty)
+			So(string(resultBytes), ShouldContainSubstring, `"Hostname":"` + exec.config.LogHostname)
+		})
 	})
 }
 
