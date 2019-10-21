@@ -59,6 +59,7 @@ type Config struct {
 	SyslogAddr          string   `envconfig:"SYSLOG_ADDR" default:"127.0.0.1:514"`
 	ContainerLogsStdout bool     `envconfig:"CONTAINER_LOGS_STDOUT" default:"false"`
 	SendDockerLabels    []string `envconfig:"SEND_DOCKER_LABELS" default:""`
+	LogHostname         string   `envconfig:"LOG_HOSTNAME"` // Name we log as
 }
 
 type Vault interface {
@@ -99,6 +100,7 @@ func logConfig(config Config) {
 	log.Infof(" * SyslogAddr:              %s", config.SyslogAddr)
 	log.Infof(" * ContainerLogsStdout:     %t", config.ContainerLogsStdout)
 	log.Infof(" * SendDockerLabels:        %v", config.SendDockerLabels)
+	log.Infof(" * LogHostname:             %s", config.LogHostname)
 	log.Infof(" * Debug:                   %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")
@@ -210,6 +212,12 @@ func initConfig() (Config, error) {
 	err := envconfig.Process("executor", &config)
 	if err != nil {
 		return Config{}, fmt.Errorf("failed to process envconfig: %s", err)
+	}
+
+	if len(config.LogHostname) < 1 {
+		// What would we do if this errored, anyway? So, just ignore it
+		hostname, _ := os.Hostname()
+		config.LogHostname = hostname
 	}
 
 	log.SetOutput(os.Stdout)
