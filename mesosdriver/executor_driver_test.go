@@ -26,7 +26,6 @@ func Test_NewExecutorDriver(t *testing.T) {
 			So(driver.cli, ShouldNotBeNil)
 			So(driver.unackedTasks, ShouldNotBeNil)
 			So(driver.unackedUpdates, ShouldNotBeNil)
-			So(driver.failedTasks, ShouldNotBeNil)
 			So(driver.delegate, ShouldEqual, mockDelegate)
 			So(driver.cfg, ShouldEqual, mesosConfig)
 			So(driver.subscriber, ShouldNotBeNil)
