@@ -25,6 +25,7 @@ import (
 const (
 	agentAPIPath      = "/api/v1/executor"
 	driverHttpTimeout = 10 * time.Second
+	driverSendTimeout = 2 * time.Second
 )
 
 // A TaskDelegate is responsible for launching and killing tasks
@@ -43,7 +44,6 @@ type ExecutorDriver struct {
 	agent          mesos.AgentInfo
 	unackedTasks   map[mesos.TaskID]mesos.TaskInfo
 	unackedUpdates map[string]executor.Call_Update
-	failedTasks    map[mesos.TaskID]mesos.TaskStatus // send updates for these as we can
 	shouldQuit     bool
 	subscriber     calls.SenderFunc
 
@@ -86,20 +86,44 @@ func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 	h events.Handler) (err error) {
 
 	log.Info("Entering event loop")
-	ctx := context.TODO()
+	ctx := context.Background()
 
-	for err == nil && !driver.shouldQuit {
-		// housekeeping
-		driver.sendFailedTasks()
+	cancel := make(chan struct{})
+	event := make(chan error)
 
+	go func() {
+		for !driver.shouldQuit {
+			time.Sleep(200 * time.Millisecond)
+		}
+		close(cancel)
+	}()
+
+	go func() {
 		var e executor.Event
 		if err = decoder.Decode(&e); err == nil {
 			err = h.HandleEvent(ctx, &e)
 		}
+
+		event <- err
+	}()
+
+	for {
+		select {
+		case <-cancel:
+			log.Info("Event loop canceled")
+			return nil
+		case err := <-event:
+			if err != nil {
+				return err
+			}
+		}
 	}
-	return err
+
+	return nil
 }
 
+// buildEventHandler returns an events.Handler that has been set up with
+// callback functions for each event type.
 func (driver *ExecutorDriver) buildEventHandler() events.Handler {
 	return events.HandlerFuncs{
 		executor.Event_SUBSCRIBED: func(_ context.Context, e *executor.Event) error {
@@ -151,19 +175,6 @@ func (driver *ExecutorDriver) buildEventHandler() events.Handler {
 		log.Error("unexpected event", e)
 		return nil
 	})
-}
-
-func (driver *ExecutorDriver) sendFailedTasks() {
-	for taskID, status := range driver.failedTasks {
-		updateErr := driver.SendStatusUpdate(status)
-		if updateErr != nil {
-			log.Warnf(
-				"failed to send status update for task %s: %+v", taskID.Value, updateErr,
-			)
-		} else {
-			delete(driver.failedTasks, taskID)
-		}
-	}
 }
 
 // SendStatusUpdate takes a new Mesos status and relays it to the agent
@@ -237,7 +248,6 @@ func NewExecutorDriver(mesosConfig *config.Config, delegate TaskDelegate) *Execu
 		),
 		unackedTasks:   make(map[mesos.TaskID]mesos.TaskInfo),
 		unackedUpdates: make(map[string]executor.Call_Update),
-		failedTasks:    make(map[mesos.TaskID]mesos.TaskStatus),
 		delegate:       delegate,
 		cfg:            mesosConfig,
 	}
@@ -259,7 +269,7 @@ func (driver *ExecutorDriver) Run() error {
 	handler := driver.buildEventHandler()
 
 	for {
-		// Function block to ensure reponse is closed
+		// Function block to ensure response is closed
 		func() {
 			subscribe := calls.Subscribe(
 				driver.unacknowledgedTasks(),

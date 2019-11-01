@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -12,8 +13,6 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
-
-	"fmt"
 
 	"github.com/Nitro/sidecar-executor/mesosdriver"
 	"github.com/Nitro/sidecar/service"
