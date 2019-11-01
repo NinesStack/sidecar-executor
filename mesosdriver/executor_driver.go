@@ -43,7 +43,7 @@ type ExecutorDriver struct {
 	agent          mesos.AgentInfo
 	unackedTasks   map[mesos.TaskID]mesos.TaskInfo
 	unackedUpdates map[string]executor.Call_Update
-	shouldQuit     bool
+	quitChan       chan struct{}
 	subscriber     calls.SenderFunc
 
 	delegate TaskDelegate
@@ -87,28 +87,26 @@ func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 	log.Info("Entering event loop")
 	ctx := context.Background()
 
-	cancel := make(chan struct{})
 	event := make(chan error)
 
 	go func() {
-		for !driver.shouldQuit {
-			time.Sleep(200 * time.Millisecond)
-		}
-		close(cancel)
-	}()
+		for {
+			var e executor.Event
+			if err = decoder.Decode(&e); err == nil {
+				err = h.HandleEvent(ctx, &e)
+			}
 
-	go func() {
-		var e executor.Event
-		if err = decoder.Decode(&e); err == nil {
-			err = h.HandleEvent(ctx, &e)
+			select {
+			case event <- err:
+			case <-driver.quitChan:
+				return
+			}
 		}
-
-		event <- err
 	}()
 
 	for {
 		select {
-		case <-cancel:
+		case <-driver.quitChan:
 			log.Info("Event loop canceled")
 			return nil
 		case err := <-event:
@@ -117,6 +115,8 @@ func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 			}
 		}
 	}
+
+	log.Info("Exiting event loop")
 
 	return nil
 }
@@ -159,7 +159,7 @@ func (driver *ExecutorDriver) buildEventHandler() events.Handler {
 
 		executor.Event_SHUTDOWN: func(_ context.Context, e *executor.Event) error {
 			log.Info("Shutting down the executor")
-			driver.shouldQuit = true
+			close(driver.quitChan)
 			return nil
 		},
 
@@ -218,7 +218,7 @@ func (driver *ExecutorDriver) NewStatus(id mesos.TaskID) mesos.TaskStatus {
 }
 
 func (driver *ExecutorDriver) Stop() {
-	driver.shouldQuit = true
+	close(driver.quitChan)
 }
 
 // NewExecutorDriver returns a properly configured ExecutorDriver
@@ -249,6 +249,7 @@ func NewExecutorDriver(mesosConfig *config.Config, delegate TaskDelegate) *Execu
 		unackedUpdates: make(map[string]executor.Call_Update),
 		delegate:       delegate,
 		cfg:            mesosConfig,
+		quitChan:       make(chan struct{}),
 	}
 
 	driver.subscriber = calls.SenderWith(
@@ -303,9 +304,11 @@ func (driver *ExecutorDriver) Run() error {
 			log.Info("Disconnected from Agent")
 		}()
 
-		if driver.shouldQuit {
+		select {
+		case <-driver.quitChan:
 			log.Info("Shutting down gracefully because we were told to")
 			return nil
+		default:
 		}
 
 		if !driver.cfg.Checkpoint {
