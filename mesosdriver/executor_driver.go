@@ -25,7 +25,6 @@ import (
 const (
 	agentAPIPath      = "/api/v1/executor"
 	driverHttpTimeout = 10 * time.Second
-	driverSendTimeout = 2 * time.Second
 )
 
 // A TaskDelegate is responsible for launching and killing tasks
