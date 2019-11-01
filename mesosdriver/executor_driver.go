@@ -163,7 +163,7 @@ func (driver *ExecutorDriver) buildEventHandler() events.Handler {
 
 		executor.Event_SHUTDOWN: func(_ context.Context, e *executor.Event) error {
 			log.Info("Shutting down the executor")
-			close(driver.quitChan)
+			driver.Stop()
 			return nil
 		},
 
