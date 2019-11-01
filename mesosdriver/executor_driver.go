@@ -93,8 +93,9 @@ func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 
 	go func() {
 		for {
+			var err error
 			var e executor.Event
-			if err := decoder.Decode(&e); err == nil {
+			if err = decoder.Decode(&e); err == nil {
 				err = h.HandleEvent(ctx, &e)
 			}
 
@@ -106,6 +107,7 @@ func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 		}
 	}()
 
+OUTER:
 	for {
 		select {
 		case <-driver.quitChan:
@@ -113,7 +115,7 @@ func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 			return nil
 		case err = <-event:
 			if err != nil {
-				break
+				break OUTER
 			}
 		}
 	}
