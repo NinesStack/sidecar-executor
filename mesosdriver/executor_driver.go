@@ -82,7 +82,9 @@ func (driver *ExecutorDriver) unacknowledgedUpdates() (result []executor.Call_Up
 
 // eventLoop is the main handler event loop of the driver. Called from Run()
 func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
-	h events.Handler) (err error) {
+	h events.Handler) error {
+
+	var err error
 
 	log.Info("Entering event loop")
 	ctx := context.Background()
@@ -92,7 +94,7 @@ func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 	go func() {
 		for {
 			var e executor.Event
-			if err = decoder.Decode(&e); err == nil {
+			if err := decoder.Decode(&e); err == nil {
 				err = h.HandleEvent(ctx, &e)
 			}
 
@@ -109,16 +111,16 @@ func (driver *ExecutorDriver) eventLoop(decoder encoding.Decoder,
 		case <-driver.quitChan:
 			log.Info("Event loop canceled")
 			return nil
-		case err := <-event:
+		case err = <-event:
 			if err != nil {
-				return err
+				break
 			}
 		}
 	}
 
 	log.Info("Exiting event loop")
 
-	return nil
+	return err
 }
 
 // buildEventHandler returns an events.Handler that has been set up with
