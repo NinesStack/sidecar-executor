@@ -23,7 +23,6 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-
 func Test_shouldCheckSidecar(t *testing.T) {
 	Convey("When checking if Sidecar is enabled", t, func() {
 

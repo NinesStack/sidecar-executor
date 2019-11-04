@@ -94,7 +94,7 @@ func Test_relayLogs(t *testing.T) {
 
 			resultBytes, _ := ioutil.ReadFile(tmpfn)
 			So(exec.config.LogHostname, ShouldNotBeEmpty)
-			So(string(resultBytes), ShouldContainSubstring, `"Hostname":"` + exec.config.LogHostname)
+			So(string(resultBytes), ShouldContainSubstring, `"Hostname":"`+exec.config.LogHostname)
 		})
 	})
 }
