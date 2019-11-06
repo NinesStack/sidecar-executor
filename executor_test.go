@@ -16,10 +16,37 @@ import (
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
+	"github.com/pborman/uuid"
 	"github.com/relistan/go-director"
 	log "github.com/sirupsen/logrus"
 	. "github.com/smartystreets/goconvey/convey"
 )
+
+// mockDriver ---
+
+type mockDriver struct {
+	lastStatus mesos.TaskStatus
+}
+
+func (m *mockDriver) NewStatus(id mesos.TaskID) mesos.TaskStatus {
+	return mesos.TaskStatus{
+		TaskID:     id,
+		Source:     mesos.SOURCE_EXECUTOR.Enum(),
+		ExecutorID: &mesos.ExecutorID{Value: "Beowulf-executor"},
+		UUID:       []byte(uuid.NewRandom()),
+	}
+}
+
+func (m *mockDriver) SendStatusUpdate(status mesos.TaskStatus) error {
+	m.lastStatus = status
+	return nil
+}
+
+func (m *mockDriver) Stop() {}
+
+func (m *mockDriver) Run() error { return nil }
+
+// mockFetcher ---
 
 type mockFetcher struct {
 	ShouldFail    bool
@@ -303,15 +330,23 @@ func Test_logTaskEnv(t *testing.T) {
 	})
 }
 
-func Test_watchContainer(t *testing.T) {
-	Convey("When watching the container", t, func() {
+func Test_monitorTask(t *testing.T) {
+	Convey("When monitoring the task", t, func() {
 		client := &container.MockDockerClient{}
 		config, err := initConfig()
 		So(err, ShouldBeNil)
 		config.SidecarBackoff = time.Duration(0)    // Don't wait to start health checking
 		config.SidecarRetryDelay = time.Duration(0) // Sidecar status should fail if ever checked
-		log.SetOutput(ioutil.Discard)               // Has to be here to take effect. Can't be higher up
+
+		// Capture logs
+		var captured bytes.Buffer
+		log.SetOutput(&captured)
+
+		driver := &mockDriver{}
 		exec := newSidecarExecutor(client, &docker.AuthConfiguration{}, config)
+		exec.driver = driver
+
+		exec.statusSleepTime = 0
 
 		resultChan := make(chan error, 5)
 		exec.watchLooper = director.NewFreeLooper(1, resultChan)
@@ -320,6 +355,20 @@ func Test_watchContainer(t *testing.T) {
 		os.Setenv("TASK_HOST", "roncevalles")
 		exec.fetcher = &mockFetcher{
 			ShouldFail: true,
+		}
+
+		taskInfo := &mesos.TaskInfo{
+			TaskID: mesos.TaskID{Value: "my-task-id"},
+			Container: &mesos.ContainerInfo{
+				Docker: &mesos.ContainerInfo_DockerInfo{
+					Parameters: []mesos.Parameter{
+						{
+							Key:   "env",
+							Value: "BOCACCIO=author",
+						},
+					},
+				},
+			},
 		}
 
 		client.ListContainersContainers = []docker.APIContainers{
@@ -341,55 +390,55 @@ func Test_watchContainer(t *testing.T) {
 
 		Convey("returns an error when ListContainers fails", func() {
 			client.ListContainersShouldError = true
-			exec.watchContainer("deadbeef0010", true)
+			exec.monitorTask("deadbeef0010", taskInfo, true)
 
-			err := <-resultChan
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "[ListContainers()]")
+			So(driver.lastStatus.State, ShouldResemble, mesos.TASK_FAILED.Enum())
+			So(captured.String(), ShouldContainSubstring, "[ListContainers()]")
 		})
 
 		Convey("returns an error when the container doesn't exist", func() {
 			client.Container = nil
 
-			exec.watchContainer("missingbeef0010", true)
+			exec.monitorTask("missingbeef0010", taskInfo, true)
 
-			err := <-resultChan
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "Container missingbeef0010 not found!")
+			So(driver.lastStatus.State, ShouldResemble, mesos.TASK_FAILED.Enum())
+			So(captured.String(), ShouldContainSubstring,
+				"Container missingbeef0010 not found!",
+			)
 		})
 
 		Convey("returns an error when the container exists but has exited with errors", func() {
 			client.Container.State.ExitCode = 1
+			exec.monitorTask("deadbeef0010", taskInfo, true)
 
-			exec.watchContainer("deadbeef0010", true)
-
-			err := <-resultChan
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "Container deadbeef0010 not running!")
+			So(driver.lastStatus.State, ShouldResemble, mesos.TASK_FAILED.Enum())
+			So(captured.String(), ShouldContainSubstring,
+				"Container deadbeef0010 not running!",
+			)
 		})
 
 		Convey("returns without errors when the container exists and has exited without errors", func() {
 			client.Container.State.ExitCode = 0
+			exec.monitorTask("deadbeef0010", taskInfo, true)
 
-			exec.watchContainer("deadbeef0010", true)
-
-			err := <-resultChan
-			So(err, ShouldBeNil) // Container stopped without errors
+			So(driver.lastStatus.State, ShouldResemble, mesos.TASK_FINISHED.Enum())
+			So(captured.String(), ShouldContainSubstring, "Task completed")
 		})
 
 		Convey("check Sidecar status for a running container with SidecarDiscover: true", func() {
-			exec.watchContainer("running00010", true)
+			exec.monitorTask("running00010", taskInfo, true)
 
-			err := <-resultChan
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "Unhealthy container: running00010 failing task!")
+			So(driver.lastStatus.State, ShouldResemble, mesos.TASK_FAILED.Enum())
+			So(captured.String(), ShouldContainSubstring,
+				"Unhealthy container: running00010 failing task!",
+			)
 		})
 
 		Convey("don't check Sidecar for a running container with SidecarDiscover: false", func() {
-			exec.watchContainer("running00010", false)
+			exec.monitorTask("running00010", taskInfo, false)
 
-			err := <-resultChan
 			So(err, ShouldBeNil) // Container running, Sidecar no checked.
+			So(captured.String(), ShouldContainSubstring, "[checkSidecar: false]")
 		})
 	})
 }

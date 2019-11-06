@@ -54,4 +54,4 @@ function cleanup {
 # Always run cleanup when the executor exits
 trap cleanup EXIT
 
-$executor -logtostderr=true
+$executor -logtostderr=true "                                  "

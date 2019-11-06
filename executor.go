@@ -20,6 +20,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	StillRunning = -1
+)
+
 // ExecDriver narrowly scopes the interface we expect from a driver. It is
 // implemented by the ExecutorDriver.
 type ExecDriver interface {
@@ -124,61 +128,18 @@ func (exec *sidecarExecutor) failTask(taskInfo *mesos.TaskInfo) {
 	exec.StopDriver()
 }
 
-// Loop on a timed basis and check the health of the process in Sidecar.
-// Note that because of the way the retries work, the loop timing is a
-// lower bound on the delay.
-func (exec *sidecarExecutor) watchContainer(containerId string, checkSidecar bool) {
-	log.Infof("Watching container %s [checkSidecar: %t]", containerId[:12], checkSidecar)
-	if checkSidecar {
-		time.Sleep(exec.config.SidecarBackoff)
-	}
+// taskKilled tells Mesos and the framework that the task was killed. Shutdown driver.
+func (exec *sidecarExecutor) taskKilled(taskInfo *mesos.TaskInfo) {
+	taskID := taskInfo.GetTaskID()
+	exec.sendStatus(TaskKilled, &taskID)
 
-	exec.watchLooper.Loop(func() error {
-		containers, err := exec.client.ListContainers(
-			docker.ListContainersOptions{},
-		)
-		if err != nil {
-			return err
-		}
+	// Unfortunately the status updates are sent async and we can't
+	// get a handle on the channel used to send them. So we wait
+	time.Sleep(exec.statusSleepTime)
 
-		// Loop through all the running containers, looking for a running
-		// container with our Id.
-		ok := false
-		for _, entry := range containers {
-			if entry.ID == containerId {
-				ok = true
-				break
-			}
-		}
-		if !ok {
-			exitCode, err := container.GetExitCode(exec.client, containerId)
-
-			if err != nil {
-				return err
-			}
-
-			msg := fmt.Sprintf("Container %s not running! - ExitCode: %d", containerId, exitCode)
-			if exitCode == 0 {
-				log.Infof(msg)
-				exec.watchLooper.Done(nil)
-				return nil
-			}
-
-			return errors.New(msg)
-		}
-
-		if !checkSidecar {
-			return nil
-		}
-
-		// Validate health status with Sidecar
-		if err = exec.sidecarStatus(containerId); err != nil {
-			return err
-		}
-
-		return nil
-	})
+	exec.StopDriver()
 }
+
 
 // Lookup a container in a service list
 func sidecarLookup(containerId string, services SidecarServices) (*service.Service, bool) {
@@ -276,6 +237,138 @@ func (exec *sidecarExecutor) sidecarStatus(containerId string) error {
 	exec.failCount = 0 // Reset because we were healthy!
 
 	return nil
+}
+
+// monitorTask runs in a goroutine and hangs out, waiting for the watchLooper to
+// complete. When it completes, it handles the Docker and Mesos interactions.
+func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInfo, checkSidecar bool) {
+	log.Infof("Monitoring Mesos task %s for container %s [checkSidecar: %t]",
+		taskInfo.TaskID.Value, cntnrId[:12], checkSidecar,
+	)
+
+	// Wait for Sidecar backoff interval
+	if checkSidecar {
+		time.Sleep(exec.config.SidecarBackoff)
+	}
+
+	// watcherWg is used to let the Sidecar draining exit early if
+	// the process exits
+	exec.watcherWg.Add(1)
+
+	containerName := container.GetContainerName(&taskInfo.TaskID)
+
+	// Note that because of the way the retries work, the loop timing is a
+	// lower bound on the delay.
+	var exitCode int = StillRunning
+	go exec.watchLooper.Loop(func() error {
+		var err error
+		exitCode, err = exec.checkContainerStatus(cntnrId, checkSidecar)
+		return err
+	})
+
+	err := exec.watchLooper.Wait()
+
+	if err != nil {
+		log.Errorf("Error! %s", err)
+
+		if exitCode == StillRunning {
+			// Something went wrong, we better take this thing out!
+			err := container.StopContainer(
+				exec.client, containerName, exec.config.KillTaskTimeout,
+			)
+			if err != nil {
+				log.Errorf("Error stopping container %s! %s", containerName, err)
+			}
+		}
+	}
+	// Release any goroutines waiting for the watcher to complete
+	exec.watcherWg.Done()
+
+	exec.handleContainerExit(taskInfo, exitCode)
+}
+
+func (exec *sidecarExecutor) handleContainerExit(taskInfo *mesos.TaskInfo, exitCode int) {
+	if exitCode != 0 {
+		containerName := container.GetContainerName(&taskInfo.TaskID)
+		// Copy the failure logs (hopefully) to stdout/stderr so we can get them
+		exec.copyLogs(containerName)
+	}
+
+	switch code := exitCode; {
+	case code == 137:
+		log.Error("Task was killed, notifying Mesos")
+
+		// Notify Mesos
+		exec.taskKilled(taskInfo)
+	case code > 0:
+		log.Error("Task failed, notifying Mesos")
+
+		// Notify Mesos
+		exec.failTask(taskInfo)
+	case code < 0:
+		log.Error("Task may still be running despite attempts to kill!")
+
+		// Notify Mesos
+		exec.failTask(taskInfo)
+	default:
+		log.Info("Task completed: ", taskInfo.GetName())
+		exec.finishTask(taskInfo)
+	}
+}
+
+// checkContainerStatus is called on a timed basis and checks the health of the
+// process in Sidecar.
+func (exec *sidecarExecutor) checkContainerStatus(containerId string, checkSidecar bool) (int, error) {
+	containers, err := exec.client.ListContainers(
+		docker.ListContainersOptions{},
+	)
+	if err != nil {
+		return StillRunning, err
+	}
+
+	// Loop through all the running containers, looking for a running container
+	// with our Id.
+	if !containerIsPresent(containers, containerId) {
+		exec.watchLooper.Quit() // Will cause looper to exit on next iter
+
+		exitCode, err := container.GetExitCode(exec.client, containerId)
+		if err != nil {
+			return StillRunning, err
+		}
+
+		msg := fmt.Sprintf("Container %s not running! - ExitCode: %d", containerId, exitCode)
+		if exitCode == 0 {
+			log.Info(msg)
+			return 0, nil
+		}
+
+		return exitCode, errors.New(msg)
+	}
+
+	// It was present, so we're either good, or we report the status from Sidecar
+	return StillRunning, exec.maybeCheckSidecar(containerId, checkSidecar)
+}
+
+// maybeCheckSidecar will get the container status from Sidecar if we're
+// configured to monitor it.
+func (exec *sidecarExecutor) maybeCheckSidecar(containerId string, checkSidecar bool) error {
+	if !checkSidecar {
+		return nil
+	}
+
+	// Validate health status with Sidecar
+	return exec.sidecarStatus(containerId)
+}
+
+// containerIsPresent checks a list of container for the current container
+func containerIsPresent(containers []docker.APIContainers, containerId string) bool {
+	for _, entry := range containers {
+		if entry.ID == containerId {
+			return true
+		}
+	}
+
+	return false
 }
 
 // StopDriver flags the event loop to exit on the next time around

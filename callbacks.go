@@ -1,8 +1,6 @@
 package main
 
 import (
-	"time"
-
 	"github.com/Nitro/sidecar-executor/container"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/relistan/go-director"
@@ -93,8 +91,9 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 
 	// We have to do this in a different goroutine or the scheduler
 	// can't send us any further updates.
-	go exec.watchContainer(cntnr.ID, shouldCheckSidecar(exec.containerConfig))
-	go exec.monitorTask(cntnr.ID[:12], taskInfo)
+	go exec.monitorTask(
+		cntnr.ID, taskInfo, shouldCheckSidecar(exec.containerConfig),
+	)
 
 	// We may be responsible for log relaying. Handle, if we are.
 	exec.handleContainerLogs(cntnr.ID, dockerLabels)
@@ -107,47 +106,19 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 func (exec *sidecarExecutor) KillTask(taskID *mesos.TaskID) {
 	log.Infof("Killing task: %s", taskID.Value)
 
-	// Stop watching the container so we don't send the wrong task status
-	exec.watchLooper.Quit() // Runs in background
-
 	// Instruct Sidecar to set the status of the service to DRAINING
 	exec.notifyDrain()
 
 	containerName := container.GetContainerName(taskID)
 
-	err := container.StopContainer(exec.client, containerName, exec.config.KillTaskTimeout)
+	// Stop the container ourselves
+	err := container.StopContainer(
+		exec.client, containerName, exec.config.KillTaskTimeout,
+	)
 	if err != nil {
 		log.Errorf("Error stopping container %s! %s", containerName, err.Error())
 	}
 
-	// Have to force this to be an int64
-	var status int64 = TaskKilled // Default status is that we shot it in the head
-
-	// Now we need to sort out whether the task finished nicely or not.
-	// This driver callback is used both to shoot a task in the head, and when
-	// a task is being replaced. The Mesos task status needs to reflect the
-	// resulting container State.ExitCode.
-	container, err := exec.client.InspectContainer(containerName)
-	if err == nil {
-		if container.State.ExitCode == 0 {
-			status = TaskFinished // We exited cleanly when asked
-		}
-	} else {
-		log.Errorf("Error inspecting container %s! %s", containerName, err.Error())
-	}
-
-	// Copy the failure logs (hopefully) to stdout/stderr so we can get them
-	if !exec.config.ContainerLogsStdout {
-		exec.copyLogs(containerName)
-	}
-
-	// Notify Mesos
-	exec.sendStatus(status, taskID)
-
-	// We have to give the driver time to send the message
-	time.Sleep(exec.statusSleepTime)
-
-	log.Info("Executor believes container has exited, stopping Mesos driver")
-
-	exec.StopDriver()
+	// Stop watching the container and report appropriate task status
+	exec.watchLooper.Quit()
 }
