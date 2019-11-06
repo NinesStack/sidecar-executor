@@ -251,8 +251,8 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		time.Sleep(exec.config.SidecarBackoff)
 	}
 
-	// watcherWg is used to let the Sidecar draining exit early if
-	// the process exits
+	// watcherWg is used to let the Sidecar draining exit early if the
+	// container exits
 	exec.watcherWg.Add(1)
 
 	containerName := container.GetContainerName(&taskInfo.TaskID)
@@ -281,6 +281,12 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 			}
 		}
 	}
+
+	// We have to check one more time if it still reports as running
+	if exitCode == StillRunning {
+		exitCode, err = exec.checkContainerStatus(cntnrId, checkSidecar)
+	}
+
 	// Release any goroutines waiting for the watcher to complete
 	exec.watcherWg.Done()
 
