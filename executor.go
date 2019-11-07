@@ -304,21 +304,17 @@ func (exec *sidecarExecutor) handleContainerExit(taskInfo *mesos.TaskInfo, exitC
 		exec.copyLogs(containerName)
 	}
 
-	switch code := exitCode; {
-	case code == 137:
+	switch {
+	// Posix exit codes signifiying that fatal signals where sent to the
+	// process. See https://www.tldp.org/LDP/abs/html/exitcodes.html
+	case exitCode > 128 && exitCode <= 165:
 		log.Error("Task was killed, notifying Mesos")
-
-		// Notify Mesos
 		exec.taskKilled(taskInfo)
-	case code > 0:
+	case exitCode > 0: // Other error, non-specified
 		log.Error("Task failed, notifying Mesos")
-
-		// Notify Mesos
 		exec.failTask(taskInfo)
-	case code < 0:
+	case exitCode < 0: // Special case: -1 unable to check code
 		log.Error("Task may still be running despite attempts to kill!")
-
-		// Notify Mesos
 		exec.failTask(taskInfo)
 	default:
 		log.Info("Task completed: ", taskInfo.GetName())
