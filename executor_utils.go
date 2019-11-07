@@ -184,6 +184,14 @@ func (exec *sidecarExecutor) notifyDrain() {
 
 	log.Warnf("Setting service ID %q status to DRAINING in Sidecar", exec.containerID[:12])
 
+	// Bridge the watcher waitgroup to a channel
+	watcherDoneChan := make(chan struct{})
+	go func() {
+		exec.watcherWg.Wait()
+		close(watcherDoneChan)
+	}()
+
+RETRIES:
 	// Try several times to instruct Sidecar to set this service to DRAINING
 	for i := 0; i <= exec.config.SidecarRetryCount; i++ {
 		status, err := drainer()
@@ -193,16 +201,15 @@ func (exec *sidecarExecutor) notifyDrain() {
 		}
 
 		log.Warnf("Failed %d attempts to set service to DRAINING in Sidecar!", i+1)
+
+		select {
+		case <-watcherDoneChan:
+			break RETRIES
+		default:
+		}
+
 		time.Sleep(exec.config.SidecarRetryDelay)
 	}
-
-	// Bridge the watcher waitgroup to a channel
-	watcherDoneChan := make(chan struct{})
-	go func() {
-		exec.watcherWg.Wait()
-		close(watcherDoneChan)
-	}()
-
 	ticker := time.NewTicker(exec.config.SidecarDrainingDuration)
 	defer ticker.Stop()
 	select {
