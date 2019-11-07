@@ -285,6 +285,9 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 	// We have to check one more time if it still reports as running
 	if exitCode == StillRunning {
 		exitCode, err = exec.checkContainerStatus(cntnrId, checkSidecar)
+		if err != nil {
+			log.Error("Unable to check container status! Assuming dead, moving on.")
+		}
 	}
 
 	// Release any goroutines waiting for the watcher to complete
@@ -294,6 +297,7 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 }
 
 func (exec *sidecarExecutor) handleContainerExit(taskInfo *mesos.TaskInfo, exitCode int) {
+	// On failed/killed tasks, we want to grab the logs and play them into Mesos
 	if exitCode != 0 {
 		containerName := container.GetContainerName(&taskInfo.TaskID)
 		// Copy the failure logs (hopefully) to stdout/stderr so we can get them
