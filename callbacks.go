@@ -43,6 +43,7 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 		taskInfo,
 		exec.config.ForceCpuLimit,
 		exec.config.ForceMemoryLimit,
+		exec.config.UseCpuShares,
 		addEnvVars,
 	)
 

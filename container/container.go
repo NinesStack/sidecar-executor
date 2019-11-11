@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fsouza/go-dockerclient"
+	docker "github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
@@ -142,7 +142,7 @@ func FollowLogs(client DockerClient, containerId string, since int64, stdout io.
 // Generate a complete config with both Config and HostConfig. Does not attempt
 // to be exhaustive in support for Docker options. Supports the most commonly
 // used options. Others are not complex to add.
-func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimit bool, envVars []string) *docker.CreateContainerOptions {
+func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimit bool, useCpuShares bool, envVars []string) *docker.CreateContainerOptions {
 	labels := LabelsForTask(taskInfo)
 
 	var command []string
@@ -170,12 +170,7 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 	}
 
 	// Check for and calculate CPU shares
-	cpus := getResource("cpus", taskInfo)
-	if cpus != nil && forceCpuLimit {
-		config.HostConfig.CPUPeriod = defaultCpuPeriod
-		config.HostConfig.CPUQuota = int64(cpus.Scalar.Value * float64(defaultCpuPeriod))
-		log.Infof("CPU limit set [HostConfig.CPUQuota=%d, HostConfig.CPUPeriod=%d]  ", config.HostConfig.CPUQuota, defaultCpuPeriod)
-	}
+	setCpuLimit(config, taskInfo, forceCpuLimit, useCpuShares)
 
 	// Check for and calculate memory limit
 	memory := getResource("mem", taskInfo)
@@ -193,6 +188,31 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 	log.Debugf("Final config: %s", jsonConfig)
 
 	return config
+}
+
+// setCpuLimit figures out what CPU limiting scheme we are using, if any, and
+// sets the Docker HostConfig up appropriately.
+func setCpuLimit(config *docker.CreateContainerOptions, taskInfo *mesos.TaskInfo, forceCpuLimit bool, useCpuShares bool) {
+	cpus := getResource("cpus", taskInfo)
+	if cpus == nil || !forceCpuLimit {
+		return
+	}
+
+	// Use CPU Shares if we ask for old-school CPU shares limiting
+	if useCpuShares {
+		multiplier := cpus.Scalar.Value
+		if multiplier > 1.0 {
+			log.Errorf("CPUShares enabled, but CPUs value is more than 100%%. Scaling down to 1.0")
+			multiplier = 1.0
+		}
+		config.HostConfig.CPUShares = int64(1024 * multiplier)
+		log.Infof("CPU Shares set [HostConfig.CPUShares=%d", config.HostConfig.CPUShares)
+		return
+	}
+
+	config.HostConfig.CPUPeriod = defaultCpuPeriod
+	config.HostConfig.CPUQuota = int64(cpus.Scalar.Value * float64(defaultCpuPeriod))
+	log.Infof("CPU limit set [HostConfig.CPUQuota=%d, HostConfig.CPUPeriod=%d]  ", config.HostConfig.CPUQuota, defaultCpuPeriod)
 }
 
 // Extract the port protocols. If no protocol is found, default to TCP

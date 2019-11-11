@@ -113,6 +113,7 @@ DockerRepository        | https://index.docker.io/v1/
 LogsSince               | 3m
 ForceCpuLimit           | false
 ForceMemoryLimit        | false
+UseCpuShares            | false
 Debug                   | false
 MesosMasterPort         | 5050
 RelaySyslog             | false
@@ -180,6 +181,14 @@ with `EXECUTOR_`.
 
  * **ForceMemoryLimit**: Should we enforce the memory limits in the request using
    cgroups (via Docker)?
+
+ * **UseCpuShares**: By default we use the Linux Completely Fair Scheduler
+   settings to control CPU limiting. This doesn't work well for certain
+   workloads.  Should we instead use the older CPU Shares relative workload
+   limiting mechanism? Note that you should understand the difference before
+   turning this on. **Note** when this option is enabled, the Mesos Cpus
+   setting now ranges from 0 to 1 and represents a percentage total of system
+   CPU time.
 
  * **Debug**: Should we turn on debug logging (verbose!) for this executor?
 
