@@ -476,9 +476,11 @@ func Test_ExecutorCallbacks(t *testing.T) {
 			})
 
 			Convey("tries multiple times to drain the service", func() {
+				exec.watcherWg.Add(1)
 				exec.config.SidecarRetryCount = 1
 				sidecarDrainFailOnce = true
 				exec.KillTask(&dummyTaskID)
+				exec.watcherWg.Done()
 				So(sidecarDrainCalls, ShouldEqual, 2)
 			})
 
