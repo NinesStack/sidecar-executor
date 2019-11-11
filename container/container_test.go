@@ -385,17 +385,15 @@ func Test_ConfigGeneration(t *testing.T) {
 		})
 
 		Convey("hard limits CPUs to 1.0 when CPU Shares are enabled", func() {
-			opts := ConfigForTask(taskInfo, true, false, true, []string{})
-			So(opts.HostConfig.CPUShares, ShouldEqual, 512)
-		})
-
-		Convey("uses the command when it's set", func() {
 			taskInfo.Resources[0] = mesos.Resource{
 				Name:   "cpus",
 				Scalar: &mesos.Value_Scalar{Value: 35},
 			}
 			opts := ConfigForTask(taskInfo, true, false, true, []string{})
 			So(opts.HostConfig.CPUShares, ShouldEqual, 1024)
+		})
+
+		Convey("uses the command when it's set", func() {
 			So(opts.Config.Cmd, ShouldContain, "date")
 		})
 	})

@@ -48,7 +48,7 @@ type Config struct {
 	LogsSince               time.Duration `envconfig:"LOGS_SINCE" default:"3m"`
 	ForceCpuLimit           bool          `envconfig:"FORCE_CPU_LIMIT" default:"false"`
 	ForceMemoryLimit        bool          `envconfig:"FORCE_MEMORY_LIMIT" default:"false"`
-	UseCpuShares			bool		  `envconfig:"USE_CPU_SHARES" default:"false"`
+	UseCpuShares            bool          `envconfig:"USE_CPU_SHARES" default:"false"`
 	Debug                   bool          `envconfig:"DEBUG" default:"false"`
 
 	// Mesos options
