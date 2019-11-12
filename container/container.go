@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -200,7 +201,7 @@ func setCpuLimit(config *docker.CreateContainerOptions, taskInfo *mesos.TaskInfo
 
 	// Use CPU Shares if we ask for old-school CPU shares limiting
 	if useCpuShares {
-		multiplier := cpus.Scalar.Value
+		multiplier := cpus.Scalar.Value / float64(runtime.NumCPU())
 		if multiplier > 1.0 {
 			log.Errorf("CPUShares enabled, but CPUs value is more than 100%%. Scaling down to 1.0")
 			multiplier = 1.0

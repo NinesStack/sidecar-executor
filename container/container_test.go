@@ -3,6 +3,7 @@ package container
 import (
 	"bytes"
 	"io/ioutil"
+	"runtime"
 	"testing"
 	"time"
 
@@ -153,7 +154,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		image := "foo/foo:1.0.0"
 		command := []string{"date"}
 
-		cpus := float64(0.5)
+		cpus := float64(0.5) * float64(runtime.NumCPU())
 		memory := float64(128)
 
 		envValue := "SOMETHING=123=123"
@@ -286,8 +287,10 @@ func Test_ConfigGeneration(t *testing.T) {
 		})
 
 		Convey("properly calculates the CPU limit", func() {
-			So(optsForced.HostConfig.CPUPeriod, ShouldEqual, float64(50000))
-			So(optsForced.HostConfig.CPUQuota, ShouldEqual, float64(25000))
+			So(optsForced.HostConfig.CPUPeriod, ShouldEqual, float64(defaultCpuPeriod))
+			So(optsForced.HostConfig.CPUQuota, ShouldEqual,
+				float64(defaultCpuPeriod * cpus),
+			)
 
 			So(opts.HostConfig.CPUPeriod, ShouldEqual, float64(0))
 			So(opts.HostConfig.CPUQuota, ShouldEqual, float64(0))
