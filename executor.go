@@ -140,7 +140,6 @@ func (exec *sidecarExecutor) taskKilled(taskInfo *mesos.TaskInfo) {
 	exec.StopDriver()
 }
 
-
 // Lookup a container in a service list
 func sidecarLookup(containerId string, services SidecarServices) (*service.Service, bool) {
 	hostname := os.Getenv("TASK_HOST") // Mesos supplies this

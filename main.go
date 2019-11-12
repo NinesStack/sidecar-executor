@@ -48,6 +48,7 @@ type Config struct {
 	LogsSince               time.Duration `envconfig:"LOGS_SINCE" default:"3m"`
 	ForceCpuLimit           bool          `envconfig:"FORCE_CPU_LIMIT" default:"false"`
 	ForceMemoryLimit        bool          `envconfig:"FORCE_MEMORY_LIMIT" default:"false"`
+	UseCpuShares            bool          `envconfig:"USE_CPU_SHARES" default:"false"`
 	Debug                   bool          `envconfig:"DEBUG" default:"false"`
 
 	// Mesos options
@@ -94,6 +95,7 @@ func logConfig(config Config) {
 	log.Infof(" * LogsSince:               %s", config.LogsSince.String())
 	log.Infof(" * ForceCpuLimit:           %t", config.ForceCpuLimit)
 	log.Infof(" * ForceMemoryLimit:        %t", config.ForceMemoryLimit)
+	log.Infof(" * UseCpuShares:            %t", config.UseCpuShares)
 	log.Infof(" * MesosMasterPort:         %s", config.MesosMasterPort)
 	log.Infof(" * RelaySyslog:             %t", config.RelaySyslog)
 	log.Infof(" * SyslogAddr:              %s", config.SyslogAddr)

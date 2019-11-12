@@ -3,6 +3,7 @@ package container
 import (
 	"bytes"
 	"io/ioutil"
+	"runtime"
 	"testing"
 	"time"
 
@@ -153,7 +154,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		image := "foo/foo:1.0.0"
 		command := []string{"date"}
 
-		cpus := float64(0.5)
+		cpus := float64(0.5) * float64(runtime.NumCPU())
 		memory := float64(128)
 
 		envValue := "SOMETHING=123=123"
@@ -278,16 +279,18 @@ func Test_ConfigGeneration(t *testing.T) {
 			},
 		}
 
-		opts := ConfigForTask(taskInfo, false, false, []string{})
-		optsForced := ConfigForTask(taskInfo, true, true, []string{})
+		opts := ConfigForTask(taskInfo, false, false, false, []string{})
+		optsForced := ConfigForTask(taskInfo, true, true, false, []string{})
 
 		Convey("gets the name from the task ID", func() {
 			So(opts.Name, ShouldEqual, "mesos-"+uuidTaskID)
 		})
 
 		Convey("properly calculates the CPU limit", func() {
-			So(optsForced.HostConfig.CPUPeriod, ShouldEqual, float64(50000))
-			So(optsForced.HostConfig.CPUQuota, ShouldEqual, float64(25000))
+			So(optsForced.HostConfig.CPUPeriod, ShouldEqual, float64(defaultCpuPeriod))
+			So(optsForced.HostConfig.CPUQuota, ShouldEqual,
+				float64(defaultCpuPeriod * cpus),
+			)
 
 			So(opts.HostConfig.CPUPeriod, ShouldEqual, float64(0))
 			So(opts.HostConfig.CPUQuota, ShouldEqual, float64(0))
@@ -375,8 +378,22 @@ func Test_ConfigGeneration(t *testing.T) {
 		Convey("defaults to correct network mode", func() {
 			none := mesos.ContainerInfo_DockerInfo_NONE
 			taskInfo.Container.Docker.Network = &none
-			opts := ConfigForTask(taskInfo, false, false, []string{})
+			opts := ConfigForTask(taskInfo, false, false, false, []string{})
 			So(opts.HostConfig.NetworkMode, ShouldEqual, "none")
+		})
+
+		Convey("supports CPU Shares when requested", func() {
+			opts := ConfigForTask(taskInfo, true, false, true, []string{})
+			So(opts.HostConfig.CPUShares, ShouldEqual, 512)
+		})
+
+		Convey("hard limits CPUs to 1.0 when CPU Shares are enabled", func() {
+			taskInfo.Resources[0] = mesos.Resource{
+				Name:   "cpus",
+				Scalar: &mesos.Value_Scalar{Value: 35},
+			}
+			opts := ConfigForTask(taskInfo, true, false, true, []string{})
+			So(opts.HostConfig.CPUShares, ShouldEqual, 1024)
 		})
 
 		Convey("uses the command when it's set", func() {
