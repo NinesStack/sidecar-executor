@@ -7,6 +7,7 @@ require (
 	github.com/Microsoft/go-winio v0.4.11
 	github.com/Nitro/sidecar v2.0.1+incompatible
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5
+	github.com/avast/retry-go v2.4.3+incompatible
 	github.com/containerd/continuity v0.0.0-20181203112020-004b46473808
 	github.com/docker/docker v0.7.3-0.20180827131323-0c5f8d2b9b23
 	github.com/docker/go-connections v0.4.0

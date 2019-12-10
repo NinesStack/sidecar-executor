@@ -50,6 +50,23 @@ func Test_PullImage(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "Something went wrong")
 		})
+
+		Convey("retries pulling image PullImageNumRetries times", func() {
+			dockerClient.PullImageShouldError = true
+			err := PullImage(dockerClient, taskInfo, &docker.AuthConfiguration{})
+
+			So(err, ShouldNotBeNil)
+			So(dockerClient.PullImageRetries, ShouldEqual, PullImageNumRetries)
+			So(err.Error(), ShouldContainSubstring, "Something went wrong")
+		})
+
+		Convey("eventually succeeds pulling image", func() {
+			dockerClient.PullImageSuccessAfterNumRetries = 3
+			err := PullImage(dockerClient, taskInfo, &docker.AuthConfiguration{})
+
+			So(err, ShouldBeNil)
+			So(dockerClient.PullImageRetries, ShouldEqual, 3)
+		})
 	})
 }
 
@@ -289,7 +306,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		Convey("properly calculates the CPU limit", func() {
 			So(optsForced.HostConfig.CPUPeriod, ShouldEqual, float64(defaultCpuPeriod))
 			So(optsForced.HostConfig.CPUQuota, ShouldEqual,
-				float64(defaultCpuPeriod * cpus),
+				float64(defaultCpuPeriod*cpus),
 			)
 
 			So(opts.HostConfig.CPUPeriod, ShouldEqual, float64(0))

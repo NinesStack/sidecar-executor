@@ -4,6 +4,8 @@ github.com/Nitro/sidecar v2.0.1+incompatible h1:d0YRUlFGQeczl+cQ5GWql+azLIFy6wG5
 github.com/Nitro/sidecar v2.0.1+incompatible/go.mod h1:lvA3xI7J4oCWr+9ortOFUzVgHM2nhXmys47N2TPq0P8=
 github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 h1:TngWCqHvy9oXAN6lEVMRuU21PR1EtLVZJmdB18Gu3Rw=
 github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5/go.mod h1:lmUJ/7eu/Q8D7ML55dXQrVaamCz2vxCfdQBasLZfHKk=
+github.com/avast/retry-go v2.4.3+incompatible h1:c/FTk2POrEQyZfaHBMkMrXdu3/6IESJUHwu8r3k1JEU=
+github.com/avast/retry-go v2.4.3+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/containerd/continuity v0.0.0-20180814194400-c7c5070e6f6e/go.mod h1:GL3xCUCBDV3CZiTSEKksMWbLE66hEyuu9qyDOOqM47Y=
 github.com/containerd/continuity v0.0.0-20181203112020-004b46473808 h1:4BX8f882bXEDKfWIf0wa8HRvpnBoPszJJXL+TVbBw4M=
 github.com/containerd/continuity v0.0.0-20181203112020-004b46473808/go.mod h1:GL3xCUCBDV3CZiTSEKksMWbLE66hEyuu9qyDOOqM47Y=

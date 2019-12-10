@@ -9,15 +9,21 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/avast/retry-go"
 	docker "github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
-// Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
-// See: https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
-const defaultCpuPeriod = 50000 // 50ms
+const (
+	// How many times a docker image pull will be retried on error
+	PullImageNumRetries = 5
+
+	// Using a small period (50ms) to ensure a consistency latency response at the expense of burst capacity
+	// See: https://www.kernel.org/doc/Documentation/scheduler/sched-bwc.txt
+	defaultCpuPeriod = 50000 // 50ms
+)
 
 var portProtocolsTokenizer = regexp.MustCompile(`,\s?`)
 
@@ -86,19 +92,26 @@ func StopContainer(client DockerClient, containerId string, timeout uint) error 
 // credentials passed in.
 func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker.AuthConfiguration) error {
 	log.Infof("Pulling Docker image '%s'", taskInfo.Container.Docker.Image)
-	err := client.PullImage(
-		docker.PullImageOptions{
-			Repository: taskInfo.Container.Docker.Image,
-		},
-		*authConfig,
+
+	err := retry.Do(func() error {
+		err := client.PullImage(
+			docker.PullImageOptions{
+				Repository: taskInfo.Container.Docker.Image,
+			},
+			*authConfig,
+		)
+		if err != nil {
+			return err
+		}
+
+		log.Info("Pulled.")
+
+		return nil
+	},
+		retry.Attempts(PullImageNumRetries),
 	)
-	if err != nil {
-		return err
-	}
 
-	log.Info("Pulled.")
-
-	return nil
+	return err
 }
 
 // GetLogs will fetch the Docker logs from a task and return two Readers that let
