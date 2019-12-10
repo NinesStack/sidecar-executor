@@ -93,7 +93,11 @@ func StopContainer(client DockerClient, containerId string, timeout uint) error 
 func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker.AuthConfiguration) error {
 	log.Infof("Pulling Docker image '%s'", taskInfo.Container.Docker.Image)
 
+	var numRetries int
+
 	err := retry.Do(func() error {
+		numRetries = numRetries + 1
+
 		err := client.PullImage(
 			docker.PullImageOptions{
 				Repository: taskInfo.Container.Docker.Image,
@@ -101,6 +105,8 @@ func PullImage(client DockerClient, taskInfo *mesos.TaskInfo, authConfig *docker
 			*authConfig,
 		)
 		if err != nil {
+			log.Warnf("Pull failed (retry %d/%d): %s", numRetries, PullImageNumRetries, err)
+
 			return err
 		}
 
