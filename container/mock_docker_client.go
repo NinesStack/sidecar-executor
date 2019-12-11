@@ -2,31 +2,41 @@ package container
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/fsouza/go-dockerclient"
 )
 
 type MockDockerClient struct {
-	ValidOptions                bool
-	PullImageShouldError        bool
-	Images                      []docker.APIImages
-	ListImagesShouldError       bool
-	StopContainerShouldError    bool
-	stopContainerFails          int
-	StopContainerMaxFails       int
-	InspectContainerShouldError bool
-	logOpts                     *docker.LogsOptions
-	Container                   *docker.Container
-	LogOutputString             string
-	LogErrorString              string
-	ListContainersShouldError   bool
-	ListContainersContainers    []docker.APIContainers
-	ContainerStarted            bool
+	ValidOptions                    bool
+	PullImageShouldError            bool // Set either this or PullImageSuccessAfterNumRetries
+	PullImageSuccessAfterNumRetries int  // but not both
+	PullImageRetries                int
+	Images                          []docker.APIImages
+	ListImagesShouldError           bool
+	StopContainerShouldError        bool
+	stopContainerFails              int
+	StopContainerMaxFails           int
+	InspectContainerShouldError     bool
+	logOpts                         *docker.LogsOptions
+	Container                       *docker.Container
+	LogOutputString                 string
+	LogErrorString                  string
+	ListContainersShouldError       bool
+	ListContainersContainers        []docker.APIContainers
+	ContainerStarted                bool
 }
 
 func (m *MockDockerClient) PullImage(opts docker.PullImageOptions, auth docker.AuthConfiguration) error {
+	m.PullImageRetries = m.PullImageRetries + 1
+
 	if m.PullImageShouldError {
 		return errors.New("Something went wrong! [PullImage()]")
+	}
+
+	if m.PullImageSuccessAfterNumRetries != 0 && m.PullImageSuccessAfterNumRetries != m.PullImageRetries {
+		return fmt.Errorf("Returning error on retry #%d (SuccessAfterNumRetries = %d)",
+			m.PullImageRetries, m.PullImageSuccessAfterNumRetries)
 	}
 
 	if len(opts.Repository) > 5 && (docker.AuthConfiguration{}) == auth {
