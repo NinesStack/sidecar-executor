@@ -18,7 +18,7 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/pborman/uuid"
-	director "github.com/relistan/go-director"
+	"github.com/relistan/go-director"
 	log "github.com/sirupsen/logrus"
 	. "github.com/smartystreets/goconvey/convey"
 )
@@ -151,9 +151,6 @@ func Test_ExecutorCallbacks(t *testing.T) {
 
 		// Sidecar services handler
 		sidecarStateCalls := 0
-		Reset(func() {
-			sidecarStateCalls = 0
-		})
 		mux.HandleFunc("/state.json",
 			func(w http.ResponseWriter, r *http.Request) {
 				sidecarStateCalls++
@@ -176,16 +173,21 @@ func Test_ExecutorCallbacks(t *testing.T) {
 		// Sidecar drain handler
 		sidecarDrainCalls := 0
 		sidecarDrainFailOnce := false
-		Reset(func() {
-			sidecarDrainCalls = 0
-			sidecarDrainFailOnce = false
-		})
+		// Overwrite with a new chan if a test needs to block and assert state
+		// while Sidecar is draining the service
+		var sidecarDrainChan chan struct{}
 		mux.HandleFunc(
 			fmt.Sprintf("/api/services/%s/drain", dummyContainerId),
 			func(w http.ResponseWriter, r *http.Request) {
 				c.So(r.URL.Path, ShouldEqual, fmt.Sprintf("/api/services/%s/drain", dummyContainerId))
 
 				sidecarDrainCalls++
+
+				if sidecarDrainChan != nil {
+					// Signal that we're here and then block until we are told to continue
+					sidecarDrainChan <- struct{}{}
+					<-sidecarDrainChan
+				}
 
 				if sidecarDrainFailOnce && sidecarDrainCalls == 1 {
 					http.Error(w, "Kaboom!", 500)
@@ -463,6 +465,53 @@ func Test_ExecutorCallbacks(t *testing.T) {
 				Convey("stops the Mesos driver", func() {
 					So(mockDriver.isStopped, ShouldBeTrue)
 				})
+			})
+
+			Convey("notifies Sidecar to drain the service before stopping the watch looper", func() {
+				doneChan := make(chan error)
+				exec.watchLooper = director.NewFreeLooper(director.FOREVER, doneChan)
+				// The looper needs to be looping something in order to unblock Wait() after a call to Quit()
+				go exec.watchLooper.Loop(func() error { return nil })
+
+				sidecarDrainChan = make(chan struct{})
+				quitChan := make(chan struct{})
+				go func() {
+					exec.KillTask(&dummyTaskID)
+					// Unblock this test
+					close(quitChan)
+				}()
+
+				// Wait for exec.KillTask() to call exec.notifyDrain()
+				// which will block waiting for us to close sidecarDrainChan
+				<-sidecarDrainChan
+
+				// Make sure exec.KillTask() didn't call exec.watchLooper.Quit() yet
+				select {
+				case <-doneChan:
+					// Fail test, we seem to have stopped the watchLooper before draining the service
+					// Also make sure we unblock service draininig to prevent Convey from waiting
+					// forever while the httptest mux handler is blocked
+					close(sidecarDrainChan)
+					So(false, ShouldBeTrue)
+				default:
+				}
+
+				// Unblock service draininig
+				close(sidecarDrainChan)
+
+				// Wait for exec.KillTask() to stop the watch looper
+				So(exec.watchLooper.Wait(), ShouldBeNil)
+
+				// Make sure we drained the service
+				So(sidecarDrainCalls, ShouldEqual, 1)
+
+				select {
+				case <-quitChan:
+					// All good, exec.KillTask() has finished successfully
+				default:
+					// Fail test, something is preventing exec.KillTask() from terminating
+					So(false, ShouldBeTrue)
+				}
 			})
 
 			Convey("stops draining the service if the container exits prematurely", func() {
