@@ -174,6 +174,14 @@ func (driver *ExecutorDriver) buildEventHandler() events.Handler {
 			)
 
 		},
+
+		executor.Event_HEARTBEAT: func(_ context.Context, e *executor.Event) error {
+			// We don't process heartbeats. In theory we ought to count how many we get
+			// and force reconnect if we don't get one. But we already watch the
+			// connection so it's just redundant. Ignore.
+			log.Debug("Heartbeat received")
+			return nil
+		},
 	}.Otherwise(func(_ context.Context, e *executor.Event) error {
 		log.Error("unexpected event", e)
 		return nil
