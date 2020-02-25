@@ -55,11 +55,13 @@ type Config struct {
 	MesosMasterPort string `envconfig:"MESOS_MASTER_PORT" default:"5050"`
 
 	// Syslogging options
-	RelaySyslog         bool     `envconfig:"RELAY_SYSLOG" default:"false"`
-	SyslogAddr          string   `envconfig:"SYSLOG_ADDR" default:"127.0.0.1:514"`
-	ContainerLogsStdout bool     `envconfig:"CONTAINER_LOGS_STDOUT" default:"false"`
-	SendDockerLabels    []string `envconfig:"SEND_DOCKER_LABELS" default:""`
-	LogHostname         string   `envconfig:"LOG_HOSTNAME"` // Name we log as
+	RelaySyslog            bool          `envconfig:"RELAY_SYSLOG" default:"false"`
+	RelaySyslogStartupOnly bool          `envconfig:"RELAY_SYSLOG_STARTUP_ONLY" default:"false"`
+	RelaySyslogStartupTime time.Duration `envconfig:"RELAY_SYSLOG_STARTUP_TIME" default:"1m"`
+	SyslogAddr             string        `envconfig:"SYSLOG_ADDR" default:"127.0.0.1:514"`
+	ContainerLogsStdout    bool          `envconfig:"CONTAINER_LOGS_STDOUT" default:"false"`
+	SendDockerLabels       []string      `envconfig:"SEND_DOCKER_LABELS" default:""`
+	LogHostname            string        `envconfig:"LOG_HOSTNAME"` // Name we log as
 }
 
 type Vault interface {
@@ -98,6 +100,8 @@ func logConfig(config Config) {
 	log.Infof(" * UseCpuShares:            %t", config.UseCpuShares)
 	log.Infof(" * MesosMasterPort:         %s", config.MesosMasterPort)
 	log.Infof(" * RelaySyslog:             %t", config.RelaySyslog)
+	log.Infof(" * RelaySyslogStartupOnly:  %t", config.RelaySyslogStartupOnly)
+	log.Infof(" * RelaySyslogStartupTime:  %s", config.RelaySyslogStartupTime.String())
 	log.Infof(" * SyslogAddr:              %s", config.SyslogAddr)
 	log.Infof(" * ContainerLogsStdout:     %t", config.ContainerLogsStdout)
 	log.Infof(" * SendDockerLabels:        %v", config.SendDockerLabels)
