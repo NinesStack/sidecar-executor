@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/Nitro/sidecar-executor/loghooks"
@@ -66,7 +67,19 @@ func (exec *sidecarExecutor) relayLogs(quitChan chan struct{},
 	go exec.handleOneStream(quitChan, "stdout", logger, outrd)
 	go exec.handleOneStream(quitChan, "stderr", logger, errrd)
 
+	if exec.config.RelaySyslogStartupOnly {
+		go cancelAfterStartup(quitChan, exec.config.RelaySyslogStartupTime)
+	}
+
 	<-quitChan
+}
+
+// cancelAfterStartup will stop the log pump after RelaySyslogStartupTime. This
+// is used for apps that do their lown logging when started, but might fail
+// during startup and need us to pump startup logs.
+func cancelAfterStartup(quitChan chan struct{}, startupTime time.Duration) {
+	<-time.After(startupTime)
+	close(quitChan)
 }
 
 // handleOneStream will process one data stream into logs

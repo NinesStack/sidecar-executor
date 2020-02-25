@@ -96,6 +96,30 @@ func Test_relayLogs(t *testing.T) {
 			So(exec.config.LogHostname, ShouldNotBeEmpty)
 			So(string(resultBytes), ShouldContainSubstring, `"Hostname":"`+exec.config.LogHostname)
 		})
+
+		Convey("shuts down after RelaySyslogStartupTime when configured", func() {
+			result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
+			exec.config.RelaySyslogStartupOnly = true
+			exec.config.RelaySyslogStartupTime = 1 * time.Millisecond
+
+			// Attempt time-limited read from the channel. If we get a read,
+			// the channel closed.
+			var channelClosedSuccess bool
+			go func() {
+				select {
+				case <-quitChan:
+					channelClosedSuccess = true
+				case <-time.After(10*time.Millisecond):
+				}
+			}()
+
+			exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, result)
+			exec.config.ContainerLogsStdout = true
+
+			So(channelClosedSuccess, ShouldBeTrue)
+			resultBytes, _ := ioutil.ReadFile(tmpfn)
+			So(resultBytes, ShouldNotBeEmpty)
+		})
 	})
 }
 

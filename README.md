@@ -117,6 +117,8 @@ UseCpuShares            | false
 Debug                   | false
 MesosMasterPort         | 5050
 RelaySyslog             | false
+RelaySyslogStartupOnly  | false
+RelaySyslogStartupTime  | 1m
 SyslogAddr              | 127.0.0.1:514
 ContainerLogsStdout     | false
 SendDockerLabels        | []
@@ -195,6 +197,15 @@ with `EXECUTOR_`.
  * **RelaySyslog**: Should we relay container logs to syslog? This is a bare UDP
    implementation suitable for loggers that don't care about syslog protocol.
    Logs will be sent in JSON format, using Logrus.
+
+ * **RelaySyslogStartupOnly**: Should we relay container logs to syslog only
+   for the startup duration? This is helpful for apps that do their own
+   syslogging but are not able to log during their startup process. The length
+   of time to relay logs is controlled by `RelaySyslogStartupTime`.
+
+ * **RelaySyslogStartupTime**: By itself this configuration item does nothing.
+   It controls the value for how long to log for when `RelaySyslogStartupOnly`
+   is set.
 
  * **SyslogAddr**: If `RelaySyslog` is true, we'll use this as the remote address
    for syslog logging.

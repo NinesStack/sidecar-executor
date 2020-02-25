@@ -32,7 +32,7 @@ func (exec *sidecarExecutor) copyLogs(containerId string) {
 func (exec *sidecarExecutor) handleContainerLogs(containerId string,
 	labels map[string]string) {
 
-	if exec.config.RelaySyslog {
+	if exec.config.RelaySyslog || exec.config.RelaySyslogStartupOnly {
 		var output io.Writer
 		if exec.config.ContainerLogsStdout {
 			output = os.Stdout
