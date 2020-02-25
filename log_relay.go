@@ -78,10 +78,8 @@ func (exec *sidecarExecutor) relayLogs(quitChan chan struct{},
 // is used for apps that do their lown logging when started, but might fail
 // during startup and need us to pump startup logs.
 func cancelAfterStartup(quitChan chan struct{}, startupTime time.Duration) {
-	select {
-	case <-time.After(startupTime):
-		close(quitChan)
-	}
+	<-time.After(startupTime)
+	close(quitChan)
 }
 
 // handleOneStream will process one data stream into logs
