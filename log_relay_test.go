@@ -115,6 +115,10 @@ func Test_relayLogs(t *testing.T) {
 
 			exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, result)
 			exec.config.ContainerLogsStdout = true
+			select {
+			case <-quitChan:
+			case <-time.After(5 * time.Millisecond):
+			}
 
 			So(channelClosedSuccess, ShouldBeTrue)
 			resultBytes, _ := ioutil.ReadFile(tmpfn)
