@@ -89,6 +89,16 @@ func (exec *sidecarExecutor) handleOneStream(quitChan chan struct{}, name string
 	scanner := bufio.NewScanner(in) // Defaults to splitting as lines
 
 	for scanner.Scan() {
+		// Before processing anything, see if we should be exiting.  Note that
+		// this still doesn't exit until the _next_ log is processed after the
+		// channel was closed.
+		select {
+		case <-quitChan:
+			return
+		default:
+			// nothing
+		}
+
 		text := scanner.Text()
 		log.Debugf("docker: %s", text)
 
@@ -105,13 +115,6 @@ func (exec *sidecarExecutor) handleOneStream(quitChan chan struct{}, name string
 		default:
 			log.Errorf("handleOneStream(): Unknown stream type '%s'. Exiting log pump.", name)
 			return
-		}
-
-		select {
-		case <-quitChan:
-			return
-		default:
-			// nothing
 		}
 	}
 	if err := scanner.Err(); err != nil {
