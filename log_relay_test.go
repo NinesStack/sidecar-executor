@@ -109,7 +109,7 @@ func Test_relayLogs(t *testing.T) {
 				select {
 				case <-quitChan:
 					channelClosedSuccess = true
-				case <-time.After(10*time.Millisecond):
+				case <-time.After(10 * time.Millisecond):
 				}
 			}()
 
