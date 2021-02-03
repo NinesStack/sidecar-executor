@@ -180,6 +180,9 @@ func Test_ConfigGeneration(t *testing.T) {
 		volumeDriverValue := "driver_test"
 		capDropValue := "NET_ADMIN"
 
+		shellCommand := `/bin/bash -c 'echo beowulf'`
+		shellCommandLabel := "executor.ShellCommand=" + shellCommand
+
 		svcName := "dev-test-app"
 		svcNameLabel := "ServiceName=" + svcName
 
@@ -228,6 +231,10 @@ func Test_ConfigGeneration(t *testing.T) {
 						{
 							Key:   "label",
 							Value: envNameLabel,
+						},
+						{
+							Key:   "label",
+							Value: shellCommandLabel,
 						},
 						{
 							Key:   "cap-add",
@@ -414,7 +421,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		})
 
 		Convey("uses the command when it's set", func() {
-			So(opts.Config.Cmd, ShouldContain, "date")
+			So(opts.Config.Cmd, ShouldContain, shellCommand)
 		})
 	})
 }
