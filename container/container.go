@@ -166,8 +166,9 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 	labels := LabelsForTask(taskInfo)
 
 	var command []string
-	if taskInfo.Command != nil && len(taskInfo.Command.Arguments) > 0 {
-		command = taskInfo.Command.Arguments
+	if _, ok := labels["executor.ShellCommand"]; ok {
+		command = []string{labels["executor.ShellCommand"]}
+		delete(labels, "executor.ShellCommand")
 	}
 
 	config := &docker.CreateContainerOptions{
