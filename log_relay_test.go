@@ -16,111 +16,114 @@ import (
 )
 
 func Test_relayLogs(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	Convey("relayLogs()", t, func() {
-		// Stub the docker client
-		dockerClient := &container.MockDockerClient{
-			LogOutputString: "this is some stdout text\n",
-			LogErrorString:  "this is some stderr text\n",
-		}
-
-		config, err := initConfig()
-		So(err, ShouldBeNil)
+	// This test can't run on Travis due to some issue with sending UDP
+	if os.Getenv("TRAVIS") != "true" {
 		log.SetOutput(ioutil.Discard)
-		exec := newSidecarExecutor(dockerClient, &docker.AuthConfiguration{}, config)
-		exec.config.SendDockerLabels = []string{"Environment", "ServiceName"}
-
-		// Stub out the fetcher
-		fetcher := &mockFetcher{}
-		exec.fetcher = fetcher
-
-		quitChan := make(chan struct{})
-		tmpdir, _ := ioutil.TempDir("", "testing")
-		tmpfn := filepath.Join(tmpdir, "log-relay")
-
-		Reset(func() { os.RemoveAll(tmpdir) })
-
-		Convey("handles both stderr and stdout", func() {
-			// Capture logging output
-			result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
-
-			// Janky that we have to sleep here, but not a good way to
-			// sync on this.
-			go func() { time.Sleep(20 * time.Millisecond); close(quitChan) }()
-
-			exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, result)
-
-			resultBytes, _ := ioutil.ReadFile(tmpfn)
-			So(string(resultBytes), ShouldContainSubstring, "some stdout text")
-			So(string(resultBytes), ShouldContainSubstring, "some stderr text")
-			result.Close()
-		})
-
-		Convey("includes the requested Docker labels", func() {
-			result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
-
-			// Janky that we have to sleep here, but not a good way to
-			// sync on this.
-			go func() { time.Sleep(1 * time.Millisecond); close(quitChan) }()
-
-			labels := map[string]string{
-				"Environment": "prod",
-				"ServiceName": "beowulf",
+		Convey("relayLogs()", t, func() {
+			// Stub the docker client
+			dockerClient := &container.MockDockerClient{
+				LogOutputString: "this is some stdout text\n",
+				LogErrorString:  "this is some stderr text\n",
 			}
 
-			exec.relayLogs(quitChan, "deadbeef123123123", labels, result)
-			exec.config.ContainerLogsStdout = true
+			config, err := initConfig()
+			So(err, ShouldBeNil)
+			log.SetOutput(ioutil.Discard)
+			exec := newSidecarExecutor(dockerClient, &docker.AuthConfiguration{}, config)
+			exec.config.SendDockerLabels = []string{"Environment", "ServiceName"}
 
-			resultBytes, _ := ioutil.ReadFile(tmpfn)
-			So(string(resultBytes), ShouldContainSubstring, `"Environment":"prod"`)
-			So(string(resultBytes), ShouldContainSubstring, `"ServiceName":"beowulf"`)
-			result.Close()
-		})
+			// Stub out the fetcher
+			fetcher := &mockFetcher{}
+			exec.fetcher = fetcher
 
-		Convey("sends the hostname", func() {
-			result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
+			quitChan := make(chan struct{})
+			tmpdir, _ := ioutil.TempDir("", "testing")
+			tmpfn := filepath.Join(tmpdir, "log-relay")
 
-			// Janky that we have to sleep here, but not a good way to
-			// sync on this.
-			go func() { time.Sleep(1 * time.Millisecond); close(quitChan) }()
+			Reset(func() { os.RemoveAll(tmpdir) })
 
-			labels := map[string]string{
-				"Environment": "prod",
-				"ServiceName": "beowulf",
-			}
+			Convey("handles both stderr and stdout", func() {
+				// Capture logging output
+				result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
 
-			exec.relayLogs(quitChan, "deadbeef123123123", labels, result)
-			exec.config.ContainerLogsStdout = true
+				// Janky that we have to sleep here, but not a good way to
+				// sync on this.
+				go func() { time.Sleep(20 * time.Millisecond); close(quitChan) }()
 
-			resultBytes, _ := ioutil.ReadFile(tmpfn)
-			So(exec.config.LogHostname, ShouldNotBeEmpty)
-			So(string(resultBytes), ShouldContainSubstring, `"Hostname":"`+exec.config.LogHostname)
-		})
+				exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, result)
 
-		Convey("shuts down after RelaySyslogStartupTime when configured", func() {
-			result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
-			exec.config.RelaySyslogStartupOnly = true
-			exec.config.RelaySyslogStartupTime = 1 * time.Millisecond
+				resultBytes, _ := ioutil.ReadFile(tmpfn)
+				So(string(resultBytes), ShouldContainSubstring, "some stdout text")
+				So(string(resultBytes), ShouldContainSubstring, "some stderr text")
+				result.Close()
+			})
 
-			// Attempt time-limited read from the channel. If we get a read,
-			// the channel closed.
-			var channelClosedSuccess bool
-			go func() {
-				select {
-				case <-quitChan:
-					channelClosedSuccess = true
-				case <-time.After(10 * time.Millisecond):
+			Convey("includes the requested Docker labels", func() {
+				result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
+
+				// Janky that we have to sleep here, but not a good way to
+				// sync on this.
+				go func() { time.Sleep(1 * time.Millisecond); close(quitChan) }()
+
+				labels := map[string]string{
+					"Environment": "prod",
+					"ServiceName": "beowulf",
 				}
-			}()
 
-			exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, result)
-			exec.config.ContainerLogsStdout = true
+				exec.relayLogs(quitChan, "deadbeef123123123", labels, result)
+				exec.config.ContainerLogsStdout = true
 
-			So(channelClosedSuccess, ShouldBeTrue)
-			resultBytes, _ := ioutil.ReadFile(tmpfn)
-			So(resultBytes, ShouldNotBeEmpty)
+				resultBytes, _ := ioutil.ReadFile(tmpfn)
+				So(string(resultBytes), ShouldContainSubstring, `"Environment":"prod"`)
+				So(string(resultBytes), ShouldContainSubstring, `"ServiceName":"beowulf"`)
+				result.Close()
+			})
+
+			Convey("sends the hostname", func() {
+				result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
+
+				// Janky that we have to sleep here, but not a good way to
+				// sync on this.
+				go func() { time.Sleep(1 * time.Millisecond); close(quitChan) }()
+
+				labels := map[string]string{
+					"Environment": "prod",
+					"ServiceName": "beowulf",
+				}
+
+				exec.relayLogs(quitChan, "deadbeef123123123", labels, result)
+				exec.config.ContainerLogsStdout = true
+
+				resultBytes, _ := ioutil.ReadFile(tmpfn)
+				So(exec.config.LogHostname, ShouldNotBeEmpty)
+				So(string(resultBytes), ShouldContainSubstring, `"Hostname":"`+exec.config.LogHostname)
+			})
+
+			Convey("shuts down after RelaySyslogStartupTime when configured", func() {
+				result, _ := os.OpenFile(tmpfn, os.O_RDWR|os.O_CREATE, 0644)
+				exec.config.RelaySyslogStartupOnly = true
+				exec.config.RelaySyslogStartupTime = 1 * time.Millisecond
+
+				// Attempt time-limited read from the channel. If we get a read,
+				// the channel closed.
+				var channelClosedSuccess bool
+				go func() {
+					select {
+					case <-quitChan:
+						channelClosedSuccess = true
+					case <-time.After(10 * time.Millisecond):
+					}
+				}()
+
+				exec.relayLogs(quitChan, "deadbeef123123123", map[string]string{}, result)
+				exec.config.ContainerLogsStdout = true
+
+				So(channelClosedSuccess, ShouldBeTrue)
+				resultBytes, _ := ioutil.ReadFile(tmpfn)
+				So(resultBytes, ShouldNotBeEmpty)
+			})
 		})
-	})
+	}
 }
 
 func Test_handleOneStream(t *testing.T) {
