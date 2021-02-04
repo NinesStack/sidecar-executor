@@ -11,7 +11,6 @@ import (
 // executor.
 func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 	taskID := taskInfo.GetTaskID()
-	log.Infof("Launching task %s with command '%s'", taskInfo.GetName(), taskInfo.Command.GetValue())
 	log.Info("Task ID ", taskID.GetValue())
 
 	// We need to tell the scheduler that we started the task
