@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/avast/retry-go"
+	retry "github.com/avast/retry-go"
 	docker "github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/pborman/uuid"
@@ -167,9 +167,11 @@ func ConfigForTask(taskInfo *mesos.TaskInfo, forceCpuLimit bool, forceMemoryLimi
 
 	var command []string
 	if _, ok := labels["executor.ShellCommand"]; ok {
-		command = []string{labels["executor.ShellCommand"]}
+		command = strings.Split(labels["executor.ShellCommand"], " ")
 		delete(labels, "executor.ShellCommand")
 	}
+
+	log.Infof("Launching task %s with command '%s'", taskInfo.GetName(), command)
 
 	config := &docker.CreateContainerOptions{
 		Name: GetContainerName(&taskInfo.TaskID),
