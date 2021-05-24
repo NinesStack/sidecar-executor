@@ -10,6 +10,8 @@ import (
 // LaunchTask is a callback from Mesos driver to launch a new task in this
 // executor.
 func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
+	var err error
+
 	taskID := taskInfo.GetTaskID()
 	log.Info("Task ID ", taskID.GetValue())
 
@@ -41,23 +43,12 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 
 	// Look up the AWS Role in Vault if we have one defined
 	if role, ok := dockerLabels["vault.AWSRole"]; ok {
-		awsRoleVars, err := exec.vault.GetAWSRoleVars(role)
+		addEnvVars, err = exec.AddAndMonitorVaultAWSKeys(addEnvVars, role)
 		if err != nil {
-			log.Errorf("Failed to get AWS credentials for role '%s'", role)
+			log.Error(err.Error())
 			exec.failTask(taskInfo)
 			return
 		}
-
-		if awsRoleVars.Vars == nil {
-			log.Error("Got empty AWS vars! Expected creds. Exiting... we can't run like this")
-			exec.failTask(taskInfo)
-			return
-		}
-
-		log.Info("Retrieved AWS Credentials, populating env vars")
-		addEnvVars = append(addEnvVars, awsRoleVars.Vars...)
-		go exec.monitorAWSCredsLease(awsRoleVars.LeaseID, awsRoleVars.LeaseExpiryTime)
-
 	}
 
 	// Configure the container and cache the container config

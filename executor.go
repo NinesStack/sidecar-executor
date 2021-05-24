@@ -400,6 +400,22 @@ func (exec *sidecarExecutor) monitorAWSCredsLease(leaseID string, leaseExpiryTim
 	ourProcess.Signal(syscall.SIGTERM)
 }
 
+func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role string) ([]string, error) {
+	awsRoleVars, err := exec.vault.GetAWSRoleVars(role)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get AWS credentials for role '%s'", role)
+	}
+
+	if awsRoleVars.Vars == nil {
+		return nil, errors.New("Got empty AWS vars! Expected creds. Exiting... we can't run like this")
+	}
+
+	log.Info("Retrieved AWS Credentials, populating env vars")
+	go exec.monitorAWSCredsLease(awsRoleVars.LeaseID, awsRoleVars.LeaseExpiryTime)
+
+	return append(addEnvVars, awsRoleVars.Vars...), nil
+}
+
 // StopDriver flags the event loop to exit on the next time around
 func (exec *sidecarExecutor) StopDriver() {
 	exec.driver.Stop()

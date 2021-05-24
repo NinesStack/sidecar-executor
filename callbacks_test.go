@@ -438,7 +438,7 @@ func Test_ExecutorCallbacks(t *testing.T) {
 
 				log.SetOutput(ioutil.Discard)
 
-				So(capture.String(), ShouldContainSubstring, "Failed to get AWS credentials for role")
+				So(capture.String(), ShouldContainSubstring, "failed to get AWS credentials for role")
 				So(mockDriver.isStopped, ShouldBeTrue)
 
 				Convey("sends an update to Mesos", func() {
