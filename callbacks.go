@@ -37,6 +37,29 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 		addEnvVars = exec.addSidecarSeeds(addEnvVars)
 	}
 
+	dockerLabels := container.LabelsForTask(taskInfo)
+
+	// Look up the AWS Role in Vault if we have one defined
+	if role, ok := dockerLabels["vault.AWSRole"]; ok {
+		awsRoleVars, err := exec.vault.GetAWSRoleVars(role)
+		if err != nil {
+			log.Errorf("Failed to get AWS credentials for role '%s'", role)
+			exec.failTask(taskInfo)
+			return
+		}
+
+		if awsRoleVars.Vars == nil {
+			log.Error("Got empty AWS vars! Expected creds. Exiting... we can't run like this")
+			exec.failTask(taskInfo)
+			return
+		}
+
+		log.Info("Retrieved AWS Credentials, populating env vars")
+		addEnvVars = append(addEnvVars, awsRoleVars.Vars...)
+		go exec.monitorAWSCredsLease(awsRoleVars.LeaseID, awsRoleVars.LeaseExpiryTime)
+
+	}
+
 	// Configure the container and cache the container config
 	exec.containerConfig = container.ConfigForTask(
 		taskInfo,
@@ -45,8 +68,6 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 		exec.config.UseCpuShares,
 		addEnvVars,
 	)
-
-	dockerLabels := container.LabelsForTask(taskInfo)
 
 	// Log out what we're starting up with
 	exec.logTaskEnv(taskInfo, dockerLabels, addEnvVars)

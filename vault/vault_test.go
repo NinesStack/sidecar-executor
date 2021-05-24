@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
@@ -83,6 +84,44 @@ func Test_DecryptEnvs(t *testing.T) {
 	})
 }
 
+func Test_GetAWSRoleVars(t *testing.T) {
+	Convey("GetAWSRoleVars()", t, func() {
+		envVault := EnvVault{client: &mockVaultAPI{}}
+
+		Convey("when the policy is valid", func() {
+			Convey("returns a valid response, containing credentials and lease details", func() {
+				roleResponse, err := envVault.GetAWSRoleVars("valid-aws-role")
+				So(err, ShouldBeNil)
+				So(roleResponse, ShouldNotBeNil)
+
+				So(roleResponse.Vars, ShouldContain, "AWS_SECRET_ACCESS_KEY=BnpDs61c12345Bqc59qYjWIl0yOCsLsOHoNpHKUk")
+				So(roleResponse.Vars, ShouldContain, "AWS_ACCESS_KEY_ID=AKIAAAAAASNZNDWB3NRL")
+				So(roleResponse.LeaseExpiryTime.Sub(time.Now().UTC()), ShouldBeGreaterThan, 86000)
+				So(roleResponse.LeaseID, ShouldEqual, "aws/creds/valid-aws-role/qE4IBWGAlWqExurMaKPdNSgG")
+			})
+		})
+
+		Convey("when the policy is invalid", func() {
+			Convey("handles the error", func() {
+				roleResponse, err := envVault.GetAWSRoleVars("invalid-aws-role")
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "got response code 400")
+				So(roleResponse, ShouldBeNil)
+			})
+		})
+
+		Convey("when bad JSON is returned", func() {
+			Convey("handles the error", func() {
+				roleResponse, err := envVault.GetAWSRoleVars("bad-aws-role-json")
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "Unable to unmarshal Vault response body")
+				So(roleResponse, ShouldBeNil)
+			})
+
+		})
+	})
+}
+
 type mockVaultAPI struct {
 	VaultAPI
 }
@@ -124,5 +163,44 @@ func (m mockVaultAPI) RawRequest(r *api.Request) (*api.Response, error) {
 		}, nil
 	}
 
-	return nil, errors.New("Unexpected")
+	if strings.Contains(r.URL.Path, "aws/creds/valid-aws-role") {
+		return &api.Response{
+			Response: &http.Response{
+				StatusCode: 200,
+				Body: ioutil.NopCloser(bytes.NewReader([]byte(`
+					{
+					   "request_id" : "933ebec3-213d-6ad5-e929-a20cd97ede43",
+					   "data" : {
+					      "secret_key" : "BnpDs61c12345Bqc59qYjWIl0yOCsLsOHoNpHKUk",
+					      "access_key" : "AKIAAAAAASNZNDWB3NRL",
+					      "security_token" : null
+					   },
+					   "lease_id" : "aws/creds/valid-aws-role/qE4IBWGAlWqExurMaKPdNSgG",
+					   "lease_duration" : 86400,
+					   "renewable" : true
+					}`,
+				))),
+			},
+		}, nil
+	}
+
+	if strings.Contains(r.URL.Path, "aws/creds/invalid-aws-role") {
+		return &api.Response{
+			Response: &http.Response{
+				StatusCode: 400,
+				Body: ioutil.NopCloser(bytes.NewReader([]byte(``))),
+			},
+		}, nil
+	}
+
+	if strings.Contains(r.URL.Path, "aws/creds/bad-aws-role-json") {
+		return &api.Response{
+			Response: &http.Response{
+				StatusCode: 200,
+				Body: ioutil.NopCloser(bytes.NewReader([]byte(`{`))),
+			},
+		}, nil
+	}
+
+	return nil, errors.New("Unexpected endpoint called on mock Vault client")
 }

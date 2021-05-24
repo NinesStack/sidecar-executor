@@ -16,10 +16,13 @@
 package vault
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
@@ -162,4 +165,91 @@ func (v EnvVault) read(path string) (*api.Secret, error) {
 	}
 
 	return api.ParseSecret(resp.Body)
+}
+
+// AWS Role response from Vault:
+// {
+//    "request_id" : "933ebec3-213d-6ad5-e929-a20cd97ede43",
+//    "data" : {
+//       "secret_key" : "BnpDs61cbFauqBqc59qYjWIl0yOCsLsOHoNpHKUk",
+//       "access_key" : "AKIAZQU2SSNZNDWB3NRL",
+//       "security_token" : null
+//    },
+//    "lease_id" : "aws/creds/sidecar-executor-test-role/qE4IBWGAlWqExurMaKPdNSgG",
+//    "warnings" : null,
+//    "lease_duration" : 86400,
+//    "renewable" : true,
+//    "auth" : null,
+//    "wrap_info" : null
+// }
+
+// A VaultAWSCredsResponse represents a response from the Vault API itself
+// containing the AWS keys and tokens, etc.
+type VaultAWSCredsResponse struct {
+	RequestID string `json:"request_id"`
+	Data      struct {
+		SecretKey     string      `json:"secret_key"`
+		AccessKey     string      `json:"access_key"`
+		SecurityToken interface{} `json:"security_token"`
+	} `json:"data"`
+	LeaseID       string      `json:"lease_id"`
+	Warnings      interface{} `json:"warnings"`
+	LeaseDuration int         `json:"lease_duration"`
+	Renewable     bool        `json:"renewable"`
+	Auth          interface{} `json:"auth"`
+	WrapInfo      interface{} `json:"wrap_info"`
+}
+
+// A VaultAWSRoleVars is returned from GetAWSRoleVars
+type VaultAWSRoleVars struct {
+	Vars            []string
+	LeaseExpiryTime time.Time
+	LeaseID         string
+}
+
+// GetAWSRoleVars calls the Vault API and asks for AWS creds for a particular role,
+// returning a string slice of vars of the form "VAR=value", and a
+func (v EnvVault) GetAWSRoleVars(role string) (*VaultAWSRoleVars, error) {
+	r := v.client.NewRequest("PUT", "/v1/aws/creds/"+role)
+
+	resp, err := v.client.RawRequest(r)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if resp == nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Failed to get AWS role Vars, got response code %d", resp.StatusCode)
+	}
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to read Vault response body: %w", err)
+	}
+
+	var creds VaultAWSCredsResponse
+	err = json.Unmarshal(data, &creds)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to unmarshal Vault response body: %w", err)
+	}
+
+	// Set up a padded expiry time to make sure we never run over
+	expiryTime := time.Now().UTC().Add(time.Duration(creds.LeaseDuration - 3600) * time.Second)
+
+	// Construct the AWS env vars
+	vars := []string{
+		fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", creds.Data.AccessKey),
+		fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", creds.Data.SecretKey),
+	}
+
+	return &VaultAWSRoleVars{
+		Vars:            vars,
+		LeaseExpiryTime: expiryTime,
+		LeaseID:         creds.LeaseID,
+	}, nil
 }

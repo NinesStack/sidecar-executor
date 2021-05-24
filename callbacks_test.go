@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Nitro/sidecar-executor/container"
+	"github.com/Nitro/sidecar-executor/vault"
 	"github.com/Nitro/sidecar/service"
 	docker "github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
@@ -103,6 +105,18 @@ func (v *mockVault) DecryptAllEnv(envs []string) ([]string, error) {
 	}
 
 	return decryptedEnv, nil
+}
+
+func (v *mockVault) GetAWSRoleVars(role string) (*vault.VaultAWSRoleVars, error) {
+	if role == "valid-aws-role" {
+		return &vault.VaultAWSRoleVars{
+			Vars:            []string{"AWS_SECRET_ACCESS_KEY=1234awesome", "AWS_ACCESS_KEY_ID=AZ123123COOL"},
+			LeaseExpiryTime: time.Now().UTC().Add(60 * time.Minute),
+			LeaseID:         "aws/somethingsomething/blah",
+		}, nil
+	}
+
+	return nil, errors.New("Intentional test error")
 }
 
 func labelsToDockerParams(labels map[string]string) []mesos.Parameter {
@@ -388,6 +402,53 @@ func Test_ExecutorCallbacks(t *testing.T) {
 				exec.LaunchTask(&taskInfo)
 
 				So(exec.containerConfig.Config.Env, ShouldContain, decryptedVal)
+			})
+
+			Convey("Gets AWS creds from Vault when a role is specified", func() {
+				dummyContainerLabels["vault.AWSRole"] = "valid-aws-role"
+				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
+
+				// We'll use logging output to validate that the goroutine ran
+				var capture bytes.Buffer
+				log.SetLevel(log.DebugLevel)
+				log.SetOutput(&capture)
+
+				exec.LaunchTask(&taskInfo)
+
+				log.SetOutput(ioutil.Discard)
+
+				// Make sure some things happened
+				So(capture.String(), ShouldContainSubstring, "Monitoring AWS Credentials")
+				So(capture.String(), ShouldContainSubstring, "Retrieved AWS Credentials")
+
+				// Make sure the vars are present in the container's config
+				So(exec.containerConfig.Config.Env, ShouldContain, "AWS_SECRET_ACCESS_KEY=1234awesome")
+				So(exec.containerConfig.Config.Env, ShouldContain, "AWS_ACCESS_KEY_ID=AZ123123COOL")
+			})
+
+			Convey("Fails to launch a task when the AWS Rols is wrong", func() {
+				dummyContainerLabels["vault.AWSRole"] = "invalid-aws-role"
+				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
+
+				var capture bytes.Buffer
+				log.SetLevel(log.DebugLevel)
+				log.SetOutput(&capture)
+
+				exec.LaunchTask(&taskInfo)
+
+				log.SetOutput(ioutil.Discard)
+
+				So(capture.String(), ShouldContainSubstring, "Failed to get AWS credentials for role")
+				So(mockDriver.isStopped, ShouldBeTrue)
+
+				Convey("sends an update to Mesos", func() {
+					So(mockDriver.receivedUpdate, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID.Value, ShouldNotBeNil)
+					So(mockDriver.receivedUpdate.TaskID.Value, ShouldEqual, dummyTaskIDValue)
+					So(mockDriver.receivedUpdate.State, ShouldNotBeNil)
+					So(*mockDriver.receivedUpdate.State, ShouldEqual, *mesos.TASK_FAILED.Enum())
+				})
 			})
 
 			Convey("Fails to launch a task when it can't decrypt vault secrets", func() {

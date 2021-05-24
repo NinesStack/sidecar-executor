@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"syscall"
 	"time"
 
 	"fmt"
@@ -374,6 +375,29 @@ func containerIsPresent(containers []docker.APIContainers, containerId string) b
 	}
 
 	return false
+}
+
+// monitorAWSCredsLease will be run in a background goroutine and will shut down the managed
+// process if we are about to hit our expiry. We don't bother with expiring the lease here,
+// it will be handled when the looper shuts down. If that somehow fails, it will still get
+// cleaned up by Vault afterward.
+func (exec *sidecarExecutor) monitorAWSCredsLease(leaseID string, leaseExpiryTime time.Time) {
+	log.Infof("Monitoring AWS Credentials expiry at '%s' for lease ID '%s'", leaseExpiryTime, leaseID)
+
+	// Block until expiry
+	<-time.After(leaseExpiryTime.Sub(time.Now().UTC()))
+
+	// Send *ourselves* a TERM to not have yet another way to shut down
+	pid := os.Getpid()
+	ourProcess, err := os.FindProcess(pid)
+	if err != nil {
+		log.Errorf("FAILED attempting to shut down due to AWS lease expiration! '%s'", err)
+		// Can't see how this would happen, but just try again
+		ourProcess, _ = os.FindProcess(pid)
+	}
+
+	log.Info("Attempting to shutdown because of AWS credential lease expiration")
+	ourProcess.Signal(syscall.SIGTERM)
 }
 
 // StopDriver flags the event loop to exit on the next time around
