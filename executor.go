@@ -426,7 +426,7 @@ func (exec *sidecarExecutor) monitorAWSCredsLease() {
 func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role string) ([]string, error) {
 	awsCredsLease, err := exec.vault.GetAWSCredsLease(role)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get AWS credentials for role '%s'", role)
+		return nil, fmt.Errorf("failed to get AWS credentials for role '%s': %w", role, err)
 	}
 
 	if awsCredsLease.Vars == nil {
