@@ -16,6 +16,7 @@
 package vault
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -33,6 +34,14 @@ const (
 	VaultURLScheme  = "vault"
 	VaultDefaultKey = "value"
 )
+
+// The Vault interface represents a client that talks to Hashicorp Vault and
+// does some lower level work on our behalf
+type Vault interface {
+	DecryptAllEnv([]string) ([]string, error)
+	GetAWSCredsLease(role string) (*VaultAWSCredsLease, error)
+	RevokeAWSCredsLease(leaseID, role string) error
+}
 
 // Client to replace vault paths by the secret value stored in Hashicorp Vault.
 type EnvVault struct {
@@ -200,16 +209,17 @@ type VaultAWSCredsResponse struct {
 	WrapInfo      interface{} `json:"wrap_info"`
 }
 
-// A VaultAWSRoleVars is returned from GetAWSRoleVars
-type VaultAWSRoleVars struct {
+// A VaultAWSCredsLease is returned from GetAWSCredsLease
+type VaultAWSCredsLease struct {
 	Vars            []string
 	LeaseExpiryTime time.Time
 	LeaseID         string
+	Role            string
 }
 
-// GetAWSRoleVars calls the Vault API and asks for AWS creds for a particular role,
+// GetAWSCredsLease calls the Vault API and asks for AWS creds for a particular role,
 // returning a string slice of vars of the form "VAR=value", and a
-func (v EnvVault) GetAWSRoleVars(role string) (*VaultAWSRoleVars, error) {
+func (v EnvVault) GetAWSCredsLease(role string) (*VaultAWSCredsLease, error) {
 	r := v.client.NewRequest("PUT", "/v1/aws/creds/"+role)
 
 	resp, err := v.client.RawRequest(r)
@@ -218,13 +228,10 @@ func (v EnvVault) GetAWSRoleVars(role string) (*VaultAWSRoleVars, error) {
 		return nil, err
 	}
 
-	if resp == nil {
-		return nil, err
-	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Failed to get AWS role Vars, got response code %d", resp.StatusCode)
+		return nil, fmt.Errorf("Failed to get AWS creds lease, got response code %d", resp.StatusCode)
 	}
 
 	data, err := ioutil.ReadAll(resp.Body)
@@ -239,7 +246,7 @@ func (v EnvVault) GetAWSRoleVars(role string) (*VaultAWSRoleVars, error) {
 	}
 
 	// Set up a padded expiry time to make sure we never run over
-	expiryTime := time.Now().UTC().Add(time.Duration(creds.LeaseDuration - 3600) * time.Second)
+	expiryTime := time.Now().UTC().Add(time.Duration(creds.LeaseDuration-3600) * time.Second)
 
 	// Construct the AWS env vars
 	vars := []string{
@@ -247,9 +254,48 @@ func (v EnvVault) GetAWSRoleVars(role string) (*VaultAWSRoleVars, error) {
 		fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", creds.Data.SecretKey),
 	}
 
-	return &VaultAWSRoleVars{
+	return &VaultAWSCredsLease{
 		Vars:            vars,
 		LeaseExpiryTime: expiryTime,
 		LeaseID:         creds.LeaseID,
+		Role:            role,
 	}, nil
+}
+
+// RevokeAWSCreds calls Vault and revokes an existing lease on AWS credentials
+func (v EnvVault) RevokeAWSCredsLease(leaseID, role string) error {
+	log.Infof("Revoking AWS lease ID '%s' for role '%s' in Vault", leaseID, role)
+
+	r := v.client.NewRequest("PUT", "/v1/sys/leases/revoke")
+
+	bodyStruct := struct {
+		LeaseID string `json:"lease_id"`
+	}{
+		LeaseID: leaseID,
+	}
+
+	body, err := json.Marshal(bodyStruct)
+	if err != nil {
+		return fmt.Errorf("Unable to JSON encode lease revocation body: %w", err)
+	}
+
+	r.Body = bytes.NewBuffer(body)
+	resp, err := v.client.RawRequest(r)
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	// The Vault API is a little bit shit. We get a 204 back if the request was
+	// accepted, whether or not this is a valid lease. Adding the `sync` arg
+	// does not change this behavior. So... 204 is all we can look at.
+	if resp.StatusCode != 204 {
+		return fmt.Errorf("Failed to revoke AWS creds lease, got response code %d", resp.StatusCode)
+	}
+
+	log.Info("Lease revoked")
+
+	return nil
 }

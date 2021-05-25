@@ -84,13 +84,13 @@ func Test_DecryptEnvs(t *testing.T) {
 	})
 }
 
-func Test_GetAWSRoleVars(t *testing.T) {
-	Convey("GetAWSRoleVars()", t, func() {
+func Test_GetAWSCredsLease(t *testing.T) {
+	Convey("GetAWSCredsLease()", t, func() {
 		envVault := EnvVault{client: &mockVaultAPI{}}
 
 		Convey("when the policy is valid", func() {
 			Convey("returns a valid response, containing credentials and lease details", func() {
-				roleResponse, err := envVault.GetAWSRoleVars("valid-aws-role")
+				roleResponse, err := envVault.GetAWSCredsLease("valid-aws-role")
 				So(err, ShouldBeNil)
 				So(roleResponse, ShouldNotBeNil)
 
@@ -103,7 +103,7 @@ func Test_GetAWSRoleVars(t *testing.T) {
 
 		Convey("when the policy is invalid", func() {
 			Convey("handles the error", func() {
-				roleResponse, err := envVault.GetAWSRoleVars("invalid-aws-role")
+				roleResponse, err := envVault.GetAWSCredsLease("invalid-aws-role")
 				So(err, ShouldNotBeNil)
 				So(err.Error(), ShouldContainSubstring, "got response code 400")
 				So(roleResponse, ShouldBeNil)
@@ -112,12 +112,37 @@ func Test_GetAWSRoleVars(t *testing.T) {
 
 		Convey("when bad JSON is returned", func() {
 			Convey("handles the error", func() {
-				roleResponse, err := envVault.GetAWSRoleVars("bad-aws-role-json")
+				roleResponse, err := envVault.GetAWSCredsLease("bad-aws-role-json")
 				So(err, ShouldNotBeNil)
 				So(err.Error(), ShouldContainSubstring, "Unable to unmarshal Vault response body")
 				So(roleResponse, ShouldBeNil)
 			})
 
+		})
+	})
+}
+
+func Test_RevokeAWSCredsLease(t *testing.T) {
+	Convey("RevokeAWSCredsLease()", t, func() {
+		envVault := EnvVault{client: &mockVaultAPI{}}
+
+		// *NOTE* There is no test for an invalid lease because Vault's API is
+		// a bit shit, and returns a 204 regardless.
+
+		Convey("revokes a lease", func() {
+			leaseID := "aws/creds/valid-aws-role/9ElbN9g177AAAAjftE1uLtSW"
+
+			var capture bytes.Buffer
+			log.SetOutput(&capture)
+			log.SetLevel(log.DebugLevel)
+
+			err := envVault.RevokeAWSCredsLease(leaseID, "valid-aws-role")
+
+			log.SetOutput(ioutil.Discard)
+
+			So(err, ShouldBeNil)
+			So(capture.String(), ShouldContainSubstring, "Revoking AWS lease ID '"+leaseID)
+			So(capture.String(), ShouldContainSubstring, "Lease revoked")
 		})
 	})
 }
@@ -188,7 +213,7 @@ func (m mockVaultAPI) RawRequest(r *api.Request) (*api.Response, error) {
 		return &api.Response{
 			Response: &http.Response{
 				StatusCode: 400,
-				Body: ioutil.NopCloser(bytes.NewReader([]byte(``))),
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(``))),
 			},
 		}, nil
 	}
@@ -197,10 +222,21 @@ func (m mockVaultAPI) RawRequest(r *api.Request) (*api.Response, error) {
 		return &api.Response{
 			Response: &http.Response{
 				StatusCode: 200,
-				Body: ioutil.NopCloser(bytes.NewReader([]byte(`{`))),
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(`{`))),
 			},
 		}, nil
 	}
+
+	// Expire AWS creds
+	if strings.Contains(r.URL.Path, "sys/leases/revoke") {
+		return &api.Response{
+			Response: &http.Response{
+				StatusCode: 204,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(``))),
+			},
+		}, nil
+	}
+
 
 	return nil, errors.New("Unexpected endpoint called on mock Vault client")
 }

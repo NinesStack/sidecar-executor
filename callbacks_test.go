@@ -107,16 +107,28 @@ func (v *mockVault) DecryptAllEnv(envs []string) ([]string, error) {
 	return decryptedEnv, nil
 }
 
-func (v *mockVault) GetAWSRoleVars(role string) (*vault.VaultAWSRoleVars, error) {
+func (v *mockVault) GetAWSCredsLease(role string) (*vault.VaultAWSCredsLease, error) {
 	if role == "valid-aws-role" {
-		return &vault.VaultAWSRoleVars{
+		return &vault.VaultAWSCredsLease{
 			Vars:            []string{"AWS_SECRET_ACCESS_KEY=1234awesome", "AWS_ACCESS_KEY_ID=AZ123123COOL"},
 			LeaseExpiryTime: time.Now().UTC().Add(60 * time.Minute),
-			LeaseID:         "aws/somethingsomething/blah",
+			LeaseID:         "aws/creds/valid-aws-role/9ElbN9g177AAAAjftE1uLtSW",
+			Role:            role,
 		}, nil
 	}
 
 	return nil, errors.New("Intentional test error")
+}
+
+func (v *mockVault) RevokeAWSCredsLease(leaseID, role string) error {
+	log.Infof("Revoking lease ID '%s' for role '%s'", leaseID, role)
+
+	if role == "valid-aws-role" && leaseID == "aws/creds/valid-aws-role/9ElbN9g177AAAAjftE1uLtSW" {
+		log.Info("TEST success revoking AWS role")
+		return nil
+	}
+
+	return errors.New("Intentional test error")
 }
 
 func labelsToDockerParams(labels map[string]string) []mesos.Parameter {
@@ -507,6 +519,8 @@ func Test_ExecutorCallbacks(t *testing.T) {
 				},
 			}
 
+			taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
+
 			exec.watchLooper = director.NewFreeLooper(1, make(chan error))
 
 			Convey("when draining the service", func() {
@@ -604,6 +618,42 @@ func Test_ExecutorCallbacks(t *testing.T) {
 				exec.config.SidecarDrainingDuration = 0
 				exec.KillTask(&dummyTaskID)
 				So(sidecarDrainCalls, ShouldEqual, 0)
+			})
+
+			Convey("Revokes AWS creds from Vault when have a lease", func() {
+				dummyContainerLabels["vault.AWSRole"] = "valid-aws-role"
+				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
+
+
+				// We'll use logging output to validate that the goroutine ran
+				var capture bytes.Buffer
+				log.SetLevel(log.DebugLevel)
+				log.SetOutput(&capture)
+
+				exec.LaunchTask(&taskInfo)
+				exec.KillTask(&taskInfo.TaskID)
+				exec.watcherWg.Wait()
+
+				log.SetOutput(ioutil.Discard)
+
+				// Make sure some things happened
+				So(capture.String(), ShouldContainSubstring, "TEST success revoking AWS role")
+			})
+
+			Convey("Does NOT revoke AWS creds when we don't have a lease", func() {
+				// We'll use logging output to validate that the goroutine ran
+				var capture bytes.Buffer
+				log.SetLevel(log.DebugLevel)
+				log.SetOutput(&capture)
+
+				exec.LaunchTask(&taskInfo)
+				exec.KillTask(&taskInfo.TaskID)
+				exec.watcherWg.Wait()
+
+				log.SetOutput(ioutil.Discard)
+
+				// Make sure some things happened
+				So(capture.String(), ShouldContainSubstring, "No AWS lease to clean up, skipping")
 			})
 		})
 	})

@@ -15,7 +15,6 @@ import (
 	"unsafe"
 
 	"github.com/Nitro/sidecar-executor/mesosdriver"
-	"github.com/Nitro/sidecar-executor/vault"
 	"github.com/Nitro/sidecar/service"
 	"github.com/fsouza/go-dockerclient"
 	mesosconfig "github.com/mesos/mesos-go/api/v1/lib/executor/config"
@@ -63,11 +62,6 @@ type Config struct {
 	ContainerLogsStdout    bool          `envconfig:"CONTAINER_LOGS_STDOUT" default:"false"`
 	SendDockerLabels       []string      `envconfig:"SEND_DOCKER_LABELS" default:""`
 	LogHostname            string        `envconfig:"LOG_HOSTNAME"` // Name we log as
-}
-
-type Vault interface {
-	DecryptAllEnv([]string) ([]string, error)
-	GetAWSRoleVars(role string) (*vault.VaultAWSRoleVars, error)
 }
 
 type SidecarServer struct {

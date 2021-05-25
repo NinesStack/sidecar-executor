@@ -45,13 +45,14 @@ type sidecarExecutor struct {
 	logsQuitChan    chan struct{}
 	dockerAuth      *docker.AuthConfiguration
 	failCount       int
-	vault           Vault
+	vault           vault.Vault
 	config          Config
 	statusSleepTime time.Duration
 	// Populated during LaunchTask
 	containerConfig *docker.CreateContainerOptions
 	containerID     string
 	driver          ExecDriver
+	awsCredsLease     *vault.VaultAWSCredsLease
 }
 
 // newSidecarExecutor returns a properly configured sidecarExecutor.
@@ -290,6 +291,8 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		}
 	}
 
+	exec.maybeCleanupAWSCredsLease()
+
 	// Release any goroutines waiting for the watcher to complete
 	exec.watcherWg.Done()
 
@@ -319,6 +322,22 @@ func (exec *sidecarExecutor) handleContainerExit(taskInfo *mesos.TaskInfo, exitC
 	default:
 		log.Info("Task completed: ", taskInfo.GetName())
 		exec.finishTask(taskInfo)
+	}
+}
+
+// maybeCleanupAWSCredsLease looks to see if we have stored any AWS creds from
+// startup time. If they are present, we will clean up the lease before
+// exiting, to help prevent garbage from building up in AWS IAM.
+func (exec *sidecarExecutor) maybeCleanupAWSCredsLease() {
+	if exec.awsCredsLease == nil {
+		log.Info("No AWS lease to clean up, skipping")
+		return
+	}
+
+	// Tell Vault to clean up the leaseID in question
+	err := exec.vault.RevokeAWSCredsLease(exec.awsCredsLease.LeaseID, exec.awsCredsLease.Role)
+	if err != nil {
+		log.Errorf("Unable to revoke AWS Creds Lease: %s", err)
 	}
 }
 
@@ -381,11 +400,13 @@ func containerIsPresent(containers []docker.APIContainers, containerId string) b
 // process if we are about to hit our expiry. We don't bother with expiring the lease here,
 // it will be handled when the looper shuts down. If that somehow fails, it will still get
 // cleaned up by Vault afterward.
-func (exec *sidecarExecutor) monitorAWSCredsLease(leaseID string, leaseExpiryTime time.Time) {
-	log.Infof("Monitoring AWS Credentials expiry at '%s' for lease ID '%s'", leaseExpiryTime, leaseID)
+func (exec *sidecarExecutor) monitorAWSCredsLease() {
+	vars := exec.awsCredsLease
+
+	log.Infof("Monitoring AWS Credentials expiry at '%s' for lease ID '%s'", vars.LeaseExpiryTime, vars.LeaseID)
 
 	// Block until expiry
-	<-time.After(leaseExpiryTime.Sub(time.Now().UTC()))
+	<-time.After(vars.LeaseExpiryTime.Sub(time.Now().UTC()))
 
 	// Send *ourselves* a TERM to not have yet another way to shut down
 	pid := os.Getpid()
@@ -400,20 +421,24 @@ func (exec *sidecarExecutor) monitorAWSCredsLease(leaseID string, leaseExpiryTim
 	ourProcess.Signal(syscall.SIGTERM)
 }
 
+// AddAndMonitorVaultAWSKeys gets the aws keys for the specified role from Vault, begins monitoring
+// the lease, and returns the vars added to those that were passed in.
 func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role string) ([]string, error) {
-	awsRoleVars, err := exec.vault.GetAWSRoleVars(role)
+	awsCredsLease, err := exec.vault.GetAWSCredsLease(role)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get AWS credentials for role '%s'", role)
 	}
 
-	if awsRoleVars.Vars == nil {
+	if awsCredsLease.Vars == nil {
 		return nil, errors.New("Got empty AWS vars! Expected creds. Exiting... we can't run like this")
 	}
 
 	log.Info("Retrieved AWS Credentials, populating env vars")
-	go exec.monitorAWSCredsLease(awsRoleVars.LeaseID, awsRoleVars.LeaseExpiryTime)
+	exec.awsCredsLease = awsCredsLease
 
-	return append(addEnvVars, awsRoleVars.Vars...), nil
+	go exec.monitorAWSCredsLease()
+
+	return append(addEnvVars, awsCredsLease.Vars...), nil
 }
 
 // StopDriver flags the event loop to exit on the next time around

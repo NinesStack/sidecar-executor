@@ -20,8 +20,18 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 
 	log.Infof("Using image '%s'", taskInfo.Container.Docker.Image)
 
-	// TODO implement configurable pull timeout?
-	if !container.CheckImage(exec.client, taskInfo) || *taskInfo.Container.Docker.ForcePullImage {
+	var shouldPullContainer bool
+
+	if !container.CheckImage(exec.client, taskInfo) {
+		shouldPullContainer = true
+	}
+
+	if taskInfo.Container.Docker.ForcePullImage != nil && *taskInfo.Container.Docker.ForcePullImage {
+		shouldPullContainer = true
+	}
+
+	// Pull the image if it's stale/missing or we're told to force it
+	if shouldPullContainer {
 		err := container.PullImage(exec.client, taskInfo, exec.dockerAuth)
 		if err != nil {
 			log.Errorf("Failed to pull image: %s", err)
