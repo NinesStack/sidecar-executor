@@ -220,7 +220,7 @@ type VaultAWSCredsLease struct {
 // GetAWSCredsLease calls the Vault API and asks for AWS creds for a particular role,
 // returning a string slice of vars of the form "VAR=value", and a
 func (v EnvVault) GetAWSCredsLease(role string) (*VaultAWSCredsLease, error) {
-	r := v.client.NewRequest("PUT", "/v1/aws/creds/"+role)
+	r := v.client.NewRequest("GET", "/v1/aws/creds/"+role)
 
 	resp, err := v.client.RawRequest(r)
 
@@ -246,7 +246,7 @@ func (v EnvVault) GetAWSCredsLease(role string) (*VaultAWSCredsLease, error) {
 	}
 
 	// Set up a padded expiry time to make sure we never run over
-	expiryTime := time.Now().UTC().Add(time.Duration(creds.LeaseDuration-3600) * time.Second)
+	expiryTime := time.Now().UTC().Add(time.Duration(creds.LeaseDuration-360) * time.Second)
 
 	// Construct the AWS env vars
 	vars := []string{
