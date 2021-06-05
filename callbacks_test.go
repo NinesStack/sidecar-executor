@@ -83,7 +83,8 @@ func (d *mockMesosDriver) Stop() {
 }
 
 type mockVault struct {
-	failDecrypt bool
+	failDecrypt                   bool
+	renewAWSCredsLeaseShouldError bool
 }
 
 func (v *mockVault) DecryptAllEnv(envs []string) ([]string, error) {
@@ -129,6 +130,16 @@ func (v *mockVault) RevokeAWSCredsLease(leaseID, role string) error {
 	}
 
 	return errors.New("Intentional test error")
+}
+
+func (v *mockVault) RenewAWSCredsLease(awsCredsLease *vault.VaultAWSCredsLease, ttl int) (*vault.VaultAWSCredsLease, error) {
+	if v.renewAWSCredsLeaseShouldError {
+		return nil, errors.New("intentional test error from renew")
+	}
+	return &vault.VaultAWSCredsLease{
+		LeaseID: awsCredsLease.LeaseID,
+		LeaseExpiryTime: awsCredsLease.LeaseExpiryTime.Add(time.Duration(ttl) * time.Second),
+	}, nil
 }
 
 func labelsToDockerParams(labels map[string]string) []mesos.Parameter {
@@ -438,6 +449,26 @@ func Test_ExecutorCallbacks(t *testing.T) {
 				So(exec.containerConfig.Config.Env, ShouldContain, "AWS_ACCESS_KEY_ID=AZ123123COOL")
 			})
 
+			Convey("Ups the TTL on creds from Vault when specified", func() {
+				dummyContainerLabels["vault.AWSRole"] = "valid-aws-role"
+				dummyContainerLabels["vault.AWSRoleTTL"] = "100"
+				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
+
+				// We'll use logging output to validate that the goroutine ran
+				var capture bytes.Buffer
+				log.SetLevel(log.DebugLevel)
+				log.SetOutput(&capture)
+
+				exec.LaunchTask(&taskInfo)
+
+				log.SetOutput(ioutil.Discard)
+
+				// Make sure some things happened
+				So(capture.String(), ShouldContainSubstring, "Monitoring AWS Credentials")
+				So(capture.String(), ShouldContainSubstring, "Renewing AWS Lease")
+				So(capture.String(), ShouldNotContainSubstring, "Unable to renew")
+			})
+
 			Convey("Fails to launch a task when the AWS Rols is wrong", func() {
 				dummyContainerLabels["vault.AWSRole"] = "invalid-aws-role"
 				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
@@ -450,7 +481,7 @@ func Test_ExecutorCallbacks(t *testing.T) {
 
 				log.SetOutput(ioutil.Discard)
 
-				So(capture.String(), ShouldContainSubstring, "failed to get AWS credentials for role")
+				So(capture.String(), ShouldContainSubstring, "Failed to get AWS credentials for role")
 				So(mockDriver.isStopped, ShouldBeTrue)
 
 				Convey("sends an update to Mesos", func() {
@@ -623,7 +654,6 @@ func Test_ExecutorCallbacks(t *testing.T) {
 			Convey("Revokes AWS creds from Vault when have a lease", func() {
 				dummyContainerLabels["vault.AWSRole"] = "valid-aws-role"
 				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
-
 
 				// We'll use logging output to validate that the goroutine ran
 				var capture bytes.Buffer

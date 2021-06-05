@@ -18,28 +18,12 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 	// We need to tell the scheduler that we started the task
 	exec.sendStatus(TaskRunning, &taskID)
 
-	log.Infof("Using image '%s'", taskInfo.Container.Docker.Image)
-
-	var shouldPullContainer bool
-
-	if !container.CheckImage(exec.client, taskInfo) {
-		shouldPullContainer = true
-	}
-
-	if taskInfo.Container.Docker.ForcePullImage != nil && *taskInfo.Container.Docker.ForcePullImage {
-		shouldPullContainer = true
-	}
-
-	// Pull the image if it's stale/missing or we're told to force it
-	if shouldPullContainer {
-		err := container.PullImage(exec.client, taskInfo, exec.dockerAuth)
-		if err != nil {
-			log.Errorf("Failed to pull image: %s", err)
-			exec.failTask(taskInfo)
-			return
-		}
-	} else {
-		log.Info("Re-using existing image... already present")
+	// Pull our Docker container if required
+	err = exec.maybePullContainer(taskInfo)
+	if err != nil {
+		log.Errorf("Failed to pull image: %s", err)
+		exec.failTask(taskInfo)
+		return
 	}
 
 	// Additional environment variables we'll pass to the container
@@ -59,6 +43,19 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 			exec.failTask(taskInfo)
 			return
 		}
+
+		// We can also have a custom TTL up to the Vault-configured max
+		if ttl, ok := dockerLabels["vault.AWSRoleTTL"]; ok {
+			err = exec.SetVaultAWSTTL(ttl)
+			if err != nil {
+				log.Error(err.Error())
+				exec.failTask(taskInfo)
+				return
+			}
+		}
+
+		// Monitor creds if we got them, and exit the process before expiry if needed
+		go exec.monitorAWSCredsLease()
 	}
 
 	// Configure the container and cache the container config

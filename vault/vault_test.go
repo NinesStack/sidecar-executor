@@ -2,6 +2,8 @@ package vault
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -14,6 +16,15 @@ import (
 	log "github.com/sirupsen/logrus"
 	. "github.com/smartystreets/goconvey/convey"
 )
+
+func Test_NewDefaultVault(t *testing.T) {
+	Convey("NewDefaultVault() returns a properly configured Vault client", t, func() {
+		client := NewDefaultVault()
+
+		So(client, ShouldNotBeNil)
+		So(client.client, ShouldNotBeNil)
+	})
+}
 
 func Test_DecryptEnvs(t *testing.T) {
 	envVault := EnvVault{client: &mockVaultAPI{}}
@@ -147,6 +158,63 @@ func Test_RevokeAWSCredsLease(t *testing.T) {
 	})
 }
 
+func Test_RenewAWSCredsLease(t *testing.T) {
+	Convey("RenewAWSCredsLease()", t, func() {
+		envVault := EnvVault{client: &mockVaultAPI{}}
+
+		Convey("renews a lease", func() {
+			lease := &VaultAWSCredsLease{
+				LeaseID:         "aws/creds/valid-aws-role/9ElbN9g177AAAAjftE1uLtSW",
+				LeaseExpiryTime: time.Now().UTC(),
+			}
+
+			var capture bytes.Buffer
+			log.SetOutput(&capture)
+			log.SetLevel(log.DebugLevel)
+
+			newLease, err := envVault.RenewAWSCredsLease(lease, 1000)
+
+			log.SetOutput(ioutil.Discard)
+
+			So(err, ShouldBeNil)
+			So(capture.String(), ShouldContainSubstring, "Renewing AWS lease ID '"+lease.LeaseID)
+			So(capture.String(), ShouldNotContainSubstring, "Unable")
+			So(capture.String(), ShouldNotContainSubstring, "Failed")
+			So(newLease, ShouldNotBeNil)
+			So(newLease.LeaseID, ShouldEqual, lease.LeaseID)
+
+			// Round whole seconds -- Let's see if this is flaky around second boundary
+			So(newLease.LeaseExpiryTime.Unix(), ShouldEqual, lease.LeaseExpiryTime.Add(1000*time.Second).Unix())
+		})
+
+		Convey("returns an error on failure to renew", func() {
+			lease := &VaultAWSCredsLease{
+				LeaseID:         "aws/creds/invalid-aws-role/9ElbN9g177AAAAjftE1uLtSW",
+				LeaseExpiryTime: time.Now().UTC(),
+			}
+
+			newLease, err := envVault.RenewAWSCredsLease(lease, 1000)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "Failed to renew AWS creds lease")
+			So(newLease, ShouldBeNil)
+		})
+
+		Convey("returns an error on invalid response body", func() {
+			lease := &VaultAWSCredsLease{
+				LeaseID:         "aws/creds/broken-body/9ElbN9g177AAAAjftE1uLtSW",
+				LeaseExpiryTime: time.Now().UTC(),
+			}
+
+			newLease, err := envVault.RenewAWSCredsLease(lease, 1000)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "Unable to unmarshal Vault response body")
+			So(newLease, ShouldBeNil)
+		})
+	})
+}
+
 type mockVaultAPI struct {
 	VaultAPI
 }
@@ -237,6 +305,38 @@ func (m mockVaultAPI) RawRequest(r *api.Request) (*api.Response, error) {
 		}, nil
 	}
 
+	// Renew AWS creds
+	if strings.Contains(r.URL.Path, "sys/leases/renew") {
+		data, _ := ioutil.ReadAll(r.Body)
+		bodyStruct := struct {
+			LeaseID   string `json:"lease_id"`
+			Increment int    `json:"increment"`
+		}{}
+		_ = json.Unmarshal(data, &bodyStruct)
+
+		statusCode := 200
+		if strings.Contains(bodyStruct.LeaseID, "invalid-aws-role") {
+			statusCode = 401
+		}
+
+		body := fmt.Sprintf(`
+				    {
+					   "lease_id" : "%s",
+					   "lease_duration" : %d
+					}
+				`, bodyStruct.LeaseID, bodyStruct.Increment)
+
+		if strings.Contains(bodyStruct.LeaseID, "broken-body") {
+			body = "{"
+		}
+
+		return &api.Response{
+			Response: &http.Response{
+				StatusCode: statusCode,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(body))),
+			},
+		}, nil
+	}
 
 	return nil, errors.New("Unexpected endpoint called on mock Vault client")
 }

@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -52,7 +53,7 @@ type sidecarExecutor struct {
 	containerConfig *docker.CreateContainerOptions
 	containerID     string
 	driver          ExecDriver
-	awsCredsLease     *vault.VaultAWSCredsLease
+	awsCredsLease   *vault.VaultAWSCredsLease
 }
 
 // newSidecarExecutor returns a properly configured sidecarExecutor.
@@ -396,17 +397,52 @@ func containerIsPresent(containers []docker.APIContainers, containerId string) b
 	return false
 }
 
+// maybePullContainer checks if we need to pull a container and does so if needed.
+func (exec *sidecarExecutor) maybePullContainer(taskInfo *mesos.TaskInfo) error {
+	var shouldPullContainer bool
+
+	if !container.CheckImage(exec.client, taskInfo) {
+		shouldPullContainer = true
+	}
+
+	if taskInfo.Container.Docker.ForcePullImage != nil && *taskInfo.Container.Docker.ForcePullImage {
+		shouldPullContainer = true
+	}
+
+	log.Infof("Using image '%s'", taskInfo.Container.Docker.Image)
+
+	// Pull the image if it's stale/missing or we're told to force it
+	if shouldPullContainer {
+		err := container.PullImage(exec.client, taskInfo, exec.dockerAuth)
+		if err != nil {
+			return err
+		}
+	}
+
+	log.Info("Re-using existing image... already present")
+
+	return nil
+}
+
 // monitorAWSCredsLease will be run in a background goroutine and will shut down the managed
 // process if we are about to hit our expiry. We don't bother with expiring the lease here,
 // it will be handled when the looper shuts down. If that somehow fails, it will still get
 // cleaned up by Vault afterward.
 func (exec *sidecarExecutor) monitorAWSCredsLease() {
-	vars := exec.awsCredsLease
+	wait := func() {
+		vars := exec.awsCredsLease
 
-	log.Infof("Monitoring AWS Credentials expiry at '%s' for lease ID '%s'", vars.LeaseExpiryTime, vars.LeaseID)
+		log.Infof("Monitoring AWS Credentials expiry at '%s' for lease ID '%s'", vars.LeaseExpiryTime, vars.LeaseID)
 
-	// Block until expiry
-	<-time.After(vars.LeaseExpiryTime.Sub(time.Now().UTC()))
+		// Block until expiry
+		<-time.After(vars.LeaseExpiryTime.Sub(time.Now().UTC()))
+	}
+
+	// We may end up in here more than once if the lease is renewed. This will reset us to
+	// monitor the new lease timeout.
+	for exec.awsCredsLease.LeaseExpiryTime.After(time.Now().UTC()) {
+		wait()
+	}
 
 	// Send *ourselves* a TERM to not have yet another way to shut down
 	pid := os.Getpid()
@@ -426,7 +462,7 @@ func (exec *sidecarExecutor) monitorAWSCredsLease() {
 func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role string) ([]string, error) {
 	awsCredsLease, err := exec.vault.GetAWSCredsLease(role)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get AWS credentials for role '%s': %w", role, err)
+		return nil, fmt.Errorf("Failed to get AWS credentials for role '%s': %w", role, err)
 	}
 
 	if awsCredsLease.Vars == nil {
@@ -436,9 +472,28 @@ func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role
 	log.Info("Retrieved AWS Credentials, populating env vars")
 	exec.awsCredsLease = awsCredsLease
 
-	go exec.monitorAWSCredsLease()
-
 	return append(addEnvVars, awsCredsLease.Vars...), nil
+}
+
+// SetVaultAWSTTL attempts to set the ttl in Vault for the AWS creds we have a lease for. This
+// will allow longer TTLs than the default, limited to no more than the max allowed by Vault.
+func (exec *sidecarExecutor) SetVaultAWSTTL(ttlStr string) error {
+	log.Infof("Renewing AWS Lease ID '%s' with new TTL %s", exec.awsCredsLease.LeaseID, ttlStr)
+	ttl, err := strconv.Atoi(ttlStr)
+	if ttl < 1 || err != nil {
+		return fmt.Errorf("Invalid TTL passed in Docker label vaul.AWSRoleTTL. Could not parse: '%s'", ttlStr)
+	}
+
+	newLease, err := exec.vault.RenewAWSCredsLease(exec.awsCredsLease, ttl)
+	if err != nil {
+		return fmt.Errorf("Unable to renew AWS Creds Lease: %s", err)
+	}
+
+	// Set the lease values to the new ones, without blowing away the env vars
+	exec.awsCredsLease.LeaseID = newLease.LeaseID
+	exec.awsCredsLease.LeaseExpiryTime = newLease.LeaseExpiryTime
+
+	return nil
 }
 
 // StopDriver flags the event loop to exit on the next time around

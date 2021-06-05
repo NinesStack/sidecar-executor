@@ -41,6 +41,7 @@ type Vault interface {
 	DecryptAllEnv([]string) ([]string, error)
 	GetAWSCredsLease(role string) (*VaultAWSCredsLease, error)
 	RevokeAWSCredsLease(leaseID, role string) error
+	RenewAWSCredsLease(awsCredsLease *VaultAWSCredsLease, ttl int) (*VaultAWSCredsLease, error)
 }
 
 // Client to replace vault paths by the secret value stored in Hashicorp Vault.
@@ -298,4 +299,58 @@ func (v EnvVault) RevokeAWSCredsLease(leaseID, role string) error {
 	log.Info("Lease revoked")
 
 	return nil
+}
+
+// RenewAWSCredsLease will renew the lease we already have on Vault, using the
+// new TTL.  It can't return a fully populated lease but returns the values
+// that have possibly changed.
+func (v EnvVault) RenewAWSCredsLease(awsCredsLease *VaultAWSCredsLease, ttl int) (*VaultAWSCredsLease, error) {
+	log.Infof("Renewing AWS lease ID '%s' for ttl '%d' in Vault", awsCredsLease.LeaseID, ttl)
+
+	r := v.client.NewRequest("PUT", "/sys/leases/renew")
+
+	bodyStruct := struct {
+		LeaseID   string `json:"lease_id"`
+		Increment int    `json:"increment"`
+	}{
+		LeaseID:   awsCredsLease.LeaseID,
+		Increment: ttl + 360, // Padded expiry to make sure we never run over
+	}
+
+	body, err := json.Marshal(bodyStruct)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to JSON encode lease renewal body: %w", err)
+	}
+
+	r.Body = bytes.NewBuffer(body)
+	resp, err := v.client.RawRequest(r)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Failed to renew AWS creds lease, got response code %d", resp.StatusCode)
+	}
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to read Vault response body: %w", err)
+	}
+
+	var creds VaultAWSCredsResponse
+	err = json.Unmarshal(data, &creds)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to unmarshal Vault response body: %w", err)
+	}
+
+	// Remove the padded expiry time when we return it
+	expiryTime := time.Now().UTC().Add(time.Duration(creds.LeaseDuration-360) * time.Second)
+
+	return &VaultAWSCredsLease{
+		LeaseExpiryTime: expiryTime,
+		LeaseID:         creds.LeaseID,
+	}, nil
 }
