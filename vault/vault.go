@@ -307,7 +307,7 @@ func (v EnvVault) RevokeAWSCredsLease(leaseID, role string) error {
 func (v EnvVault) RenewAWSCredsLease(awsCredsLease *VaultAWSCredsLease, ttl int) (*VaultAWSCredsLease, error) {
 	log.Infof("Renewing AWS lease ID '%s' for ttl '%d' in Vault", awsCredsLease.LeaseID, ttl)
 
-	r := v.client.NewRequest("PUT", "/sys/leases/renew")
+	r := v.client.NewRequest("PUT", "/v1/sys/leases/renew")
 
 	bodyStruct := struct {
 		LeaseID   string `json:"lease_id"`
