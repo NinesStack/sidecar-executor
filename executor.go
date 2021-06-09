@@ -6,7 +6,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -79,9 +81,19 @@ func (exec *sidecarExecutor) logTaskEnv(taskInfo *mesos.TaskInfo, labels map[str
 
 	log.Infof("Docker Environment --------------------")
 	for _, setting := range env {
-		log.Infof(" * %s", setting)
+		log.Infof(" * %s", redactSetting(setting))
 	}
 	log.Infof("---------------------------------------")
+}
+
+var replExpr = regexp.MustCompile("(.*)=(...).{10}(.+).{5}")
+
+// redactSettings will redact some things we don't want to log
+func redactSetting(setting string) string {
+	if strings.Contains(setting, "SECRET") {
+		return replExpr.ReplaceAllString(setting, "$1=$2[REDACTED]$3...")
+	}
+	return setting
 }
 
 // Send task status updates to Mesos via the executor driver
@@ -294,10 +306,10 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 
 	exec.maybeCleanupAWSCredsLease()
 
+	exec.handleContainerExit(taskInfo, exitCode)
+
 	// Release any goroutines waiting for the watcher to complete
 	exec.watcherWg.Done()
-
-	exec.handleContainerExit(taskInfo, exitCode)
 }
 
 func (exec *sidecarExecutor) handleContainerExit(taskInfo *mesos.TaskInfo, exitCode int) {

@@ -327,6 +327,11 @@ func Test_logTaskEnv(t *testing.T) {
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), addEnvVars)
 			So(output.String(), ShouldContainSubstring, "SIDECAR_SEEDS=bede,chaucer")
 		})
+
+		Convey("redacts secrets", func() {
+			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{"AWS_SECRET_ACCESS_KEY=1234567890abbacafe12345"})
+			So(output.String(), ShouldContainSubstring, "AWS_SECRET_ACCESS_KEY=123[REDACTED]acafe...")
+		})
 	})
 }
 
