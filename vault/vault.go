@@ -219,7 +219,7 @@ type VaultAWSCredsLease struct {
 }
 
 // GetAWSCredsLease calls the Vault API and asks for AWS creds for a particular role,
-// returning a string slice of vars of the form "VAR=value", and a
+// returning a string slice of vars of the form "VAR=value" and/or an error if needed
 func (v EnvVault) GetAWSCredsLease(role string) (*VaultAWSCredsLease, error) {
 	r := v.client.NewRequest("GET", "/v1/aws/creds/"+role)
 
