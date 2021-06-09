@@ -247,9 +247,8 @@ func getPortProtocols(port mesos.ContainerInfo_DockerInfo_PortMapping) []string 
 	for _, protocol := range matches {
 		if protocol == "" {
 			return []string{"tcp"}
-		} else {
-			protocols = append(protocols, protocol)
 		}
+		protocols = append(protocols, protocol)
 	}
 
 	return protocols
