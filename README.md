@@ -239,16 +239,30 @@ control the Vault integration. You should specify at least the following:
  * `VAULT_ADDR` - URL of the Vault server.
  * `VAULT_MAX_RETRIES` - API retries before Vault fails.
  * `VAULT_TOKEN` - Optional if specified in a file or using userpass.
- * `VAULT_TOKEN_FILE` - Where to cache Vault tokens between calls to the executor
-   on the same host.
- * `VAULT_TTL` - The TTL in seconds of the Vault Token we'll have issued note that
-   the grace period is one hour so shorter than 1 hour is not possible.
+ * `VAULT_TOKEN_FILE` - Where to cache Vault tokens between calls to the
+   executor on the same host.
+ * `VAULT_TTL` - The TTL in seconds of the Vault Token we'll have issued note
+   that the grace period is one hour so shorter than 1 hour is not possible.
 
-**WARNING** If you are using Vault, you _really_ want to have the executor cache
-tokens to a `VAULT_TOKEN_FILE`. If not you can build up quite a lot of tokens
-in Vault, and that doesn't work well. Especially in a fast job failure scenario
-where executors running on multiple machines might be generating tokens
-constantly.
+**WARNING** If you are using Vault, you _really_ want to have the executor
+cache tokens to a `VAULT_TOKEN_FILE`. If not you can build up quite a lot of
+tokens in Vault, and that doesn't work well. Especially in a fast job failure
+scenario where executors running on multiple machines might be generating
+tokens constantly.
+
+### Docker Labels
+
+In configurations where it is desired for Vault to handle provisioning of AWS
+credentials using the AWS provider, you may pass two Docker labels into the
+deploy to configure this behavior. They are passed as labels instead of env
+vars so that they can be picked up by logging systems. They are as follows:
+
+ * `vault.AWSRole` - specifies the AWS role (pre-existing in IAM/Vault) to
+   request. By itself this will give you the default TTL for the policy
+
+ * `vault.AWSRoleTTL` - This will allow you extend the requested time, up to
+   the max allowed by Vault for the policy
+
 
 Configuring Docker Connectivity
 -------------------------------

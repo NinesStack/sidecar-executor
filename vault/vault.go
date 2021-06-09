@@ -16,10 +16,14 @@
 package vault
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
@@ -30,6 +34,15 @@ const (
 	VaultURLScheme  = "vault"
 	VaultDefaultKey = "value"
 )
+
+// The Vault interface represents a client that talks to Hashicorp Vault and
+// does some lower level work on our behalf
+type Vault interface {
+	DecryptAllEnv([]string) ([]string, error)
+	GetAWSCredsLease(role string) (*VaultAWSCredsLease, error)
+	RevokeAWSCredsLease(leaseID, role string) error
+	RenewAWSCredsLease(awsCredsLease *VaultAWSCredsLease, ttl int) (*VaultAWSCredsLease, error)
+}
 
 // Client to replace vault paths by the secret value stored in Hashicorp Vault.
 type EnvVault struct {
@@ -162,4 +175,182 @@ func (v EnvVault) read(path string) (*api.Secret, error) {
 	}
 
 	return api.ParseSecret(resp.Body)
+}
+
+// AWS Role response from Vault:
+// {
+//    "request_id" : "933ebec3-213d-6ad5-e929-a20cd97ede43",
+//    "data" : {
+//       "secret_key" : "BnpDs61cbFauqBqc59qYjWIl0yOCsLsOHoNpHKUk",
+//       "access_key" : "AKIAZQU2SSNZNDWB3NRL",
+//       "security_token" : null
+//    },
+//    "lease_id" : "aws/creds/sidecar-executor-test-role/qE4IBWGAlWqExurMaKPdNSgG",
+//    "warnings" : null,
+//    "lease_duration" : 86400,
+//    "renewable" : true,
+//    "auth" : null,
+//    "wrap_info" : null
+// }
+
+// A VaultAWSCredsResponse represents a response from the Vault API itself
+// containing the AWS keys and tokens, etc.
+type VaultAWSCredsResponse struct {
+	RequestID string `json:"request_id"`
+	Data      struct {
+		SecretKey     string      `json:"secret_key"`
+		AccessKey     string      `json:"access_key"`
+		SecurityToken interface{} `json:"security_token"`
+	} `json:"data"`
+	LeaseID       string      `json:"lease_id"`
+	Warnings      interface{} `json:"warnings"`
+	LeaseDuration int         `json:"lease_duration"`
+	Renewable     bool        `json:"renewable"`
+	Auth          interface{} `json:"auth"`
+	WrapInfo      interface{} `json:"wrap_info"`
+}
+
+// A VaultAWSCredsLease is returned from GetAWSCredsLease
+type VaultAWSCredsLease struct {
+	Vars            []string
+	LeaseExpiryTime time.Time
+	LeaseID         string
+	Role            string
+}
+
+// GetAWSCredsLease calls the Vault API and asks for AWS creds for a particular role,
+// returning a string slice of vars of the form "VAR=value" and/or an error if needed
+func (v EnvVault) GetAWSCredsLease(role string) (*VaultAWSCredsLease, error) {
+	r := v.client.NewRequest("GET", "/v1/aws/creds/"+role)
+
+	resp, err := v.client.RawRequest(r)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Failed to get AWS creds lease, got response code %d", resp.StatusCode)
+	}
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to read Vault response body: %w", err)
+	}
+
+	var creds VaultAWSCredsResponse
+	err = json.Unmarshal(data, &creds)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to unmarshal Vault response body: %w", err)
+	}
+
+	// Set up a padded expiry time to make sure we never run over
+	expiryTime := time.Now().UTC().Add(time.Duration(creds.LeaseDuration-360) * time.Second)
+
+	// Construct the AWS env vars
+	vars := []string{
+		fmt.Sprintf("AWS_ACCESS_KEY_ID=%s", creds.Data.AccessKey),
+		fmt.Sprintf("AWS_SECRET_ACCESS_KEY=%s", creds.Data.SecretKey),
+	}
+
+	return &VaultAWSCredsLease{
+		Vars:            vars,
+		LeaseExpiryTime: expiryTime,
+		LeaseID:         creds.LeaseID,
+		Role:            role,
+	}, nil
+}
+
+// RevokeAWSCreds calls Vault and revokes an existing lease on AWS credentials
+func (v EnvVault) RevokeAWSCredsLease(leaseID, role string) error {
+	log.Infof("Revoking AWS lease ID '%s' for role '%s' in Vault", leaseID, role)
+
+	r := v.client.NewRequest("PUT", "/v1/sys/leases/revoke")
+
+	bodyStruct := struct {
+		LeaseID string `json:"lease_id"`
+	}{
+		LeaseID: leaseID,
+	}
+
+	body, err := json.Marshal(bodyStruct)
+	if err != nil {
+		return fmt.Errorf("Unable to JSON encode lease revocation body: %w", err)
+	}
+
+	r.Body = bytes.NewBuffer(body)
+	resp, err := v.client.RawRequest(r)
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	// The Vault API is a little bit shit. We get a 204 back if the request was
+	// accepted, whether or not this is a valid lease. Adding the `sync` arg
+	// does not change this behavior. So... 204 is all we can look at.
+	if resp.StatusCode != 204 {
+		return fmt.Errorf("Failed to revoke AWS creds lease, got response code %d", resp.StatusCode)
+	}
+
+	log.Info("Lease revoked")
+
+	return nil
+}
+
+// RenewAWSCredsLease will renew the lease we already have on Vault, using the
+// new TTL.  It can't return a fully populated lease but returns the values
+// that have possibly changed.
+func (v EnvVault) RenewAWSCredsLease(awsCredsLease *VaultAWSCredsLease, ttl int) (*VaultAWSCredsLease, error) {
+	log.Infof("Renewing AWS lease ID '%s' for ttl '%d' in Vault", awsCredsLease.LeaseID, ttl)
+
+	r := v.client.NewRequest("PUT", "/v1/sys/leases/renew")
+
+	bodyStruct := struct {
+		LeaseID   string `json:"lease_id"`
+		Increment int    `json:"increment"`
+	}{
+		LeaseID:   awsCredsLease.LeaseID,
+		Increment: ttl + 360, // Padded expiry to make sure we never run over
+	}
+
+	body, err := json.Marshal(bodyStruct)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to JSON encode lease renewal body: %w", err)
+	}
+
+	r.Body = bytes.NewBuffer(body)
+	resp, err := v.client.RawRequest(r)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Failed to renew AWS creds lease, got response code %d", resp.StatusCode)
+	}
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to read Vault response body: %w", err)
+	}
+
+	var creds VaultAWSCredsResponse
+	err = json.Unmarshal(data, &creds)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to unmarshal Vault response body: %w", err)
+	}
+
+	// Remove the padded expiry time when we return it
+	expiryTime := time.Now().UTC().Add(time.Duration(creds.LeaseDuration-360) * time.Second)
+
+	return &VaultAWSCredsLease{
+		LeaseExpiryTime: expiryTime,
+		LeaseID:         creds.LeaseID,
+	}, nil
 }

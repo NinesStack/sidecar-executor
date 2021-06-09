@@ -10,24 +10,20 @@ import (
 // LaunchTask is a callback from Mesos driver to launch a new task in this
 // executor.
 func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
+	var err error
+
 	taskID := taskInfo.GetTaskID()
 	log.Info("Task ID ", taskID.GetValue())
 
 	// We need to tell the scheduler that we started the task
 	exec.sendStatus(TaskRunning, &taskID)
 
-	log.Infof("Using image '%s'", taskInfo.Container.Docker.Image)
-
-	// TODO implement configurable pull timeout?
-	if !container.CheckImage(exec.client, taskInfo) || *taskInfo.Container.Docker.ForcePullImage {
-		err := container.PullImage(exec.client, taskInfo, exec.dockerAuth)
-		if err != nil {
-			log.Errorf("Failed to pull image: %s", err)
-			exec.failTask(taskInfo)
-			return
-		}
-	} else {
-		log.Info("Re-using existing image... already present")
+	// Pull our Docker container if required
+	err = exec.maybePullContainer(taskInfo)
+	if err != nil {
+		log.Errorf("Failed to pull image: %s", err)
+		exec.failTask(taskInfo)
+		return
 	}
 
 	// Additional environment variables we'll pass to the container
@@ -35,6 +31,31 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 	if exec.config.SeedSidecar {
 		// Fetch the Mesos slave list and append the SIDECAR_SEEDS env var
 		addEnvVars = exec.addSidecarSeeds(addEnvVars)
+	}
+
+	dockerLabels := container.LabelsForTask(taskInfo)
+
+	// Look up the AWS Role in Vault if we have one defined
+	if role, ok := dockerLabels["vault.AWSRole"]; ok {
+		addEnvVars, err = exec.AddAndMonitorVaultAWSKeys(addEnvVars, role)
+		if err != nil {
+			log.Error(err.Error())
+			exec.failTask(taskInfo)
+			return
+		}
+
+		// We can also have a custom TTL up to the Vault-configured max
+		if ttl, ok := dockerLabels["vault.AWSRoleTTL"]; ok {
+			err = exec.SetVaultAWSTTL(ttl)
+			if err != nil {
+				log.Error(err.Error())
+				exec.failTask(taskInfo)
+				return
+			}
+		}
+
+		// Monitor creds if we got them, and exit the process before expiry if needed
+		go exec.monitorAWSCredsLease()
 	}
 
 	// Configure the container and cache the container config
@@ -45,8 +66,6 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 		exec.config.UseCpuShares,
 		addEnvVars,
 	)
-
-	dockerLabels := container.LabelsForTask(taskInfo)
 
 	// Log out what we're starting up with
 	exec.logTaskEnv(taskInfo, dockerLabels, addEnvVars)

@@ -6,7 +6,11 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"fmt"
@@ -44,13 +48,14 @@ type sidecarExecutor struct {
 	logsQuitChan    chan struct{}
 	dockerAuth      *docker.AuthConfiguration
 	failCount       int
-	vault           Vault
+	vault           vault.Vault
 	config          Config
 	statusSleepTime time.Duration
 	// Populated during LaunchTask
 	containerConfig *docker.CreateContainerOptions
 	containerID     string
 	driver          ExecDriver
+	awsCredsLease   *vault.VaultAWSCredsLease
 }
 
 // newSidecarExecutor returns a properly configured sidecarExecutor.
@@ -76,9 +81,19 @@ func (exec *sidecarExecutor) logTaskEnv(taskInfo *mesos.TaskInfo, labels map[str
 
 	log.Infof("Docker Environment --------------------")
 	for _, setting := range env {
-		log.Infof(" * %s", setting)
+		log.Infof(" * %s", redactSetting(setting))
 	}
 	log.Infof("---------------------------------------")
+}
+
+var replExpr = regexp.MustCompile("(.*)=(...).{10}(.+).{5}")
+
+// redactSettings will redact some things we don't want to log
+func redactSetting(setting string) string {
+	if strings.Contains(setting, "SECRET") {
+		return replExpr.ReplaceAllString(setting, "$1=$2[REDACTED]$3...")
+	}
+	return setting
 }
 
 // Send task status updates to Mesos via the executor driver
@@ -289,10 +304,12 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		}
 	}
 
-	// Release any goroutines waiting for the watcher to complete
-	exec.watcherWg.Done()
+	exec.maybeCleanupAWSCredsLease()
 
 	exec.handleContainerExit(taskInfo, exitCode)
+
+	// Release any goroutines waiting for the watcher to complete
+	exec.watcherWg.Done()
 }
 
 func (exec *sidecarExecutor) handleContainerExit(taskInfo *mesos.TaskInfo, exitCode int) {
@@ -318,6 +335,22 @@ func (exec *sidecarExecutor) handleContainerExit(taskInfo *mesos.TaskInfo, exitC
 	default:
 		log.Info("Task completed: ", taskInfo.GetName())
 		exec.finishTask(taskInfo)
+	}
+}
+
+// maybeCleanupAWSCredsLease looks to see if we have stored any AWS creds from
+// startup time. If they are present, we will clean up the lease before
+// exiting, to help prevent garbage from building up in AWS IAM.
+func (exec *sidecarExecutor) maybeCleanupAWSCredsLease() {
+	if exec.awsCredsLease == nil {
+		log.Info("No AWS lease to clean up, skipping")
+		return
+	}
+
+	// Tell Vault to clean up the leaseID in question
+	err := exec.vault.RevokeAWSCredsLease(exec.awsCredsLease.LeaseID, exec.awsCredsLease.Role)
+	if err != nil {
+		log.Errorf("Unable to revoke AWS Creds Lease: %s", err)
 	}
 }
 
@@ -374,6 +407,105 @@ func containerIsPresent(containers []docker.APIContainers, containerId string) b
 	}
 
 	return false
+}
+
+// maybePullContainer checks if we need to pull a container and does so if needed.
+func (exec *sidecarExecutor) maybePullContainer(taskInfo *mesos.TaskInfo) error {
+	var shouldPullContainer bool
+
+	if !container.CheckImage(exec.client, taskInfo) {
+		shouldPullContainer = true
+	}
+
+	if taskInfo.Container.Docker.ForcePullImage != nil && *taskInfo.Container.Docker.ForcePullImage {
+		shouldPullContainer = true
+	}
+
+	log.Infof("Using image '%s'", taskInfo.Container.Docker.Image)
+
+	// Pull the image if it's stale/missing or we're told to force it
+	if shouldPullContainer {
+		err := container.PullImage(exec.client, taskInfo, exec.dockerAuth)
+		if err != nil {
+			return err
+		}
+	}
+
+	log.Info("Re-using existing image... already present")
+
+	return nil
+}
+
+// monitorAWSCredsLease will be run in a background goroutine and will shut down the managed
+// process if we are about to hit our expiry. We don't bother with expiring the lease here,
+// it will be handled when the looper shuts down. If that somehow fails, it will still get
+// cleaned up by Vault afterward.
+func (exec *sidecarExecutor) monitorAWSCredsLease() {
+	wait := func() {
+		vars := exec.awsCredsLease
+
+		log.Infof("Monitoring AWS Credentials expiry at '%s' for lease ID '%s'", vars.LeaseExpiryTime, vars.LeaseID)
+
+		// Block until expiry
+		<-time.After(vars.LeaseExpiryTime.Sub(time.Now().UTC()))
+	}
+
+	// We may end up in here more than once if the lease is renewed. This will reset us to
+	// monitor the new lease timeout.
+	for exec.awsCredsLease.LeaseExpiryTime.After(time.Now().UTC()) {
+		wait()
+	}
+
+	// Send *ourselves* a TERM to not have yet another way to shut down
+	pid := os.Getpid()
+	ourProcess, err := os.FindProcess(pid)
+	if err != nil {
+		log.Errorf("FAILED attempting to shut down due to AWS lease expiration! '%s'", err)
+		// Can't see how this would happen, but just try again
+		ourProcess, _ = os.FindProcess(pid)
+	}
+
+	log.Info("Attempting to shutdown because of AWS credential lease expiration")
+	ourProcess.Signal(syscall.SIGTERM)
+}
+
+// AddAndMonitorVaultAWSKeys gets the aws keys for the specified role from Vault, begins monitoring
+// the lease, and returns the vars added to those that were passed in.
+func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role string) ([]string, error) {
+	awsCredsLease, err := exec.vault.GetAWSCredsLease(role)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get AWS credentials for role '%s': %w", role, err)
+	}
+
+	if awsCredsLease.Vars == nil {
+		return nil, errors.New("Got empty AWS vars! Expected creds. Exiting... we can't run like this")
+	}
+
+	log.Info("Retrieved AWS Credentials, populating env vars")
+	exec.awsCredsLease = awsCredsLease
+
+	return append(addEnvVars, awsCredsLease.Vars...), nil
+}
+
+// SetVaultAWSTTL attempts to set the ttl in Vault for the AWS creds we have a lease for. This
+// will allow longer TTLs than the default, limited to no more than the max allowed by Vault.
+func (exec *sidecarExecutor) SetVaultAWSTTL(ttlStr string) error {
+	log.Infof("Renewing AWS Lease ID '%s'", exec.awsCredsLease.LeaseID)
+	ttl, err := strconv.Atoi(ttlStr)
+	if ttl < 1 || err != nil {
+		return fmt.Errorf("Invalid TTL passed in Docker label vaul.AWSRoleTTL. Could not parse: '%s'", ttlStr)
+	}
+
+	newLease, err := exec.vault.RenewAWSCredsLease(exec.awsCredsLease, ttl)
+	if err != nil {
+		return fmt.Errorf("Unable to renew AWS Creds Lease: %s", err)
+	}
+
+	// Set the lease values to the new ones, without blowing away the env vars
+	exec.awsCredsLease.LeaseID = newLease.LeaseID
+	exec.awsCredsLease.LeaseExpiryTime = newLease.LeaseExpiryTime
+
+	return nil
 }
 
 // StopDriver flags the event loop to exit on the next time around

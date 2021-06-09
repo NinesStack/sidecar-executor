@@ -289,14 +289,14 @@ func Test_logTaskEnv(t *testing.T) {
 				},
 				{
 					Key:   "label",
-					Value: "EnvironmentName=dev",
+					Value: "Environment=dev",
 				},
 			}
 
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
 			So(output.String(), ShouldContainSubstring, "SERVICE_NAME=test-service")
-			So(output.String(), ShouldContainSubstring, "ENVIRONMENT_NAME=dev")
+			So(output.String(), ShouldContainSubstring, "ENVIRONMENT=dev")
 		})
 
 		Convey("leaves environment and service undefined if no labels are set", func() {
@@ -305,7 +305,7 @@ func Test_logTaskEnv(t *testing.T) {
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{})
 
 			So(output.String(), ShouldNotContainSubstring, "SERVICE_NAME=")
-			So(output.String(), ShouldNotContainSubstring, "ENVIRONMENT_NAME=")
+			So(output.String(), ShouldNotContainSubstring, "ENVIRONMENT=")
 		})
 
 		Convey("leaves version unset if it can't be parsed", func() {
@@ -326,6 +326,11 @@ func Test_logTaskEnv(t *testing.T) {
 			addEnvVars := exec.addSidecarSeeds([]string{})
 			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), addEnvVars)
 			So(output.String(), ShouldContainSubstring, "SIDECAR_SEEDS=bede,chaucer")
+		})
+
+		Convey("redacts secrets", func() {
+			exec.logTaskEnv(taskInfo, container.LabelsForTask(taskInfo), []string{"AWS_SECRET_ACCESS_KEY=1234567890abbacafe12345"})
+			So(output.String(), ShouldContainSubstring, "AWS_SECRET_ACCESS_KEY=123[REDACTED]acafe...")
 		})
 	})
 }

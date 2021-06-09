@@ -64,10 +64,6 @@ type Config struct {
 	LogHostname            string        `envconfig:"LOG_HOSTNAME"` // Name we log as
 }
 
-type Vault interface {
-	DecryptAllEnv([]string) ([]string, error)
-}
-
 type SidecarServer struct {
 	Services map[string]service.Service
 }
