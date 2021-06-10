@@ -266,7 +266,7 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 	}
 
 	// watcherWg is used to let the Sidecar draining exit early if the
-	// container exits
+	// container exits, and when shutting down from the signal handler.
 	exec.watcherWg.Add(1)
 
 	containerName := container.GetContainerName(&taskInfo.TaskID)
@@ -466,7 +466,7 @@ func (exec *sidecarExecutor) monitorAWSCredsLease() {
 	}
 
 	log.Info("Attempting to shutdown because of AWS credential lease expiration")
-	ourProcess.Signal(syscall.SIGTERM)
+	ourProcess.Signal(syscall.SIGUSR1)
 }
 
 // AddAndMonitorVaultAWSKeys gets the aws keys for the specified role from Vault, begins monitoring

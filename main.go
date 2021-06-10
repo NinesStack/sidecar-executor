@@ -198,14 +198,30 @@ func handleSignals(scExec *sidecarExecutor) {
 
 	sig := <-sigChan
 	log.Warnf("Received signal '%s', attempting clean shutdown", sig)
+
+	exitCode := 130
+
 	if scExec.watchLooper != nil {
-		scExec.watchLooper.Done(errors.New("Got " + sig.String() + " signal!"))
+		// Signal to monitorTask() to exit
+		if sig == syscall.SIGUSR1 {
+			// Intentionally invoked clean shutdown
+			scExec.watchLooper.Quit()
+			exitCode = 0
+		} else {
+			scExec.watchLooper.Done(errors.New("Got " + sig.String() + " signal!"))
+		}
+
+		// Wait for monitorTask()'s goroutine to exit
+		scExec.watcherWg.Wait()
 	}
+
+	// Shut down log pump if running
 	if scExec.logsQuitChan != nil {
 		close(scExec.logsQuitChan) // Signal loops to exit
 	}
+
 	time.Sleep(3 * time.Second) // Try to let it quit
-	os.Exit(130)                // Ctrl-C received or equivalent
+	os.Exit(exitCode)                // Ctrl-C received or equivalent
 }
 
 func initConfig() (Config, error) {
