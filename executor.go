@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -284,15 +283,15 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 
 	if err != nil {
 		log.Errorf("Error! %s", err)
+	}
 
-		if exitCode == StillRunning {
-			// Something went wrong, we better take this thing out!
-			err := container.StopContainer(
-				exec.client, containerName, exec.config.KillTaskTimeout,
-			)
-			if err != nil {
-				log.Errorf("Error stopping container %s! %s", containerName, err)
-			}
+	if exitCode == StillRunning {
+		// Something went wrong, we better take this thing out!
+		err := container.StopContainer(
+			exec.client, containerName, exec.config.KillTaskTimeout,
+		)
+		if err != nil {
+			log.Errorf("Error stopping container %s! %s", containerName, err)
 		}
 	}
 
@@ -491,12 +490,12 @@ func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role
 // will allow longer TTLs than the default, limited to no more than the max allowed by Vault.
 func (exec *sidecarExecutor) SetVaultAWSTTL(ttlStr string) error {
 	log.Infof("Renewing AWS Lease ID '%s'", exec.awsCredsLease.LeaseID)
-	ttl, err := strconv.Atoi(ttlStr)
+	ttl, err := time.ParseDuration(ttlStr)
 	if ttl < 1 || err != nil {
 		return fmt.Errorf("Invalid TTL passed in Docker label vaul.AWSRoleTTL. Could not parse: '%s'", ttlStr)
 	}
 
-	newLease, err := exec.vault.RenewAWSCredsLease(exec.awsCredsLease, ttl)
+	newLease, err := exec.vault.RenewAWSCredsLease(exec.awsCredsLease, int(ttl.Seconds()))
 	if err != nil {
 		return fmt.Errorf("Unable to renew AWS Creds Lease: %s", err)
 	}

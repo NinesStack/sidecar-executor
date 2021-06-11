@@ -194,7 +194,7 @@ func handleSignals(scExec *sidecarExecutor) {
 	sigChan := make(chan os.Signal, 1) // Buffered!
 
 	// Grab some signals we want to catch where possible
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 
 	sig := <-sigChan
 	log.Warnf("Received signal '%s', attempting clean shutdown", sig)
