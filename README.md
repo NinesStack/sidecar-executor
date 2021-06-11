@@ -261,7 +261,9 @@ vars so that they can be picked up by logging systems. They are as follows:
    request. By itself this will give you the default TTL for the policy
 
  * `vault.AWSRoleTTL` - This will allow you extend the requested time, up to
-   the max allowed by Vault for the policy
+   the max allowed by Vault for the policy. The value is a string, specified
+   in [Go Duration format](https://golang.org/pkg/time/#ParseDuration). E.g.
+   "1m40s" for 1 minute and 40 seconds.
 
 
 Configuring Docker Connectivity
