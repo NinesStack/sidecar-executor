@@ -451,7 +451,7 @@ func Test_ExecutorCallbacks(t *testing.T) {
 
 			Convey("Ups the TTL on creds from Vault when specified", func() {
 				dummyContainerLabels["vault.AWSRole"] = "valid-aws-role"
-				dummyContainerLabels["vault.AWSRoleTTL"] = "100"
+				dummyContainerLabels["vault.AWSRoleTTL"] = "1m40s"
 				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
 
 				// We'll use logging output to validate that the goroutine ran
@@ -467,6 +467,23 @@ func Test_ExecutorCallbacks(t *testing.T) {
 				So(capture.String(), ShouldContainSubstring, "Monitoring AWS Credentials")
 				So(capture.String(), ShouldContainSubstring, "Renewing AWS Lease")
 				So(capture.String(), ShouldNotContainSubstring, "Unable to renew")
+			})
+
+			Convey("Fails the deploy when the TTL is not parseable", func() {
+				dummyContainerLabels["vault.AWSRole"] = "valid-aws-role"
+				dummyContainerLabels["vault.AWSRoleTTL"] = "100"
+				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
+
+				// We'll use logging output to validate that the goroutine ran
+				var capture bytes.Buffer
+				log.SetLevel(log.DebugLevel)
+				log.SetOutput(&capture)
+
+				exec.LaunchTask(&taskInfo)
+
+				log.SetOutput(ioutil.Discard)
+
+				So(capture.String(), ShouldContainSubstring, "Invalid TTL passed in Docker label vaul.AWSRoleTTL")
 			})
 
 			Convey("Fails to launch a task when the AWS Rols is wrong", func() {
