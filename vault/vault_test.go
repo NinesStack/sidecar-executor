@@ -215,6 +215,41 @@ func Test_RenewAWSCredsLease(t *testing.T) {
 	})
 }
 
+func Test_MaybeRevokeToken(t *testing.T) {
+	Convey("MaybeRevokeToken()", t, func() {
+		envVault := EnvVault{client: &mockVaultAPI{}}
+
+		Convey("revokes our token if we have a service-specific token", func() {
+			var capture bytes.Buffer
+			log.SetOutput(&capture)
+
+			envVault.token = "test-token"
+			err := envVault.MaybeRevokeToken()
+
+			log.SetOutput(ioutil.Discard)
+
+			So(err, ShouldBeNil)
+			So(capture.String(), ShouldContainSubstring, "Revoking service-specific parent token in Vault: test-token")
+			So(capture.String(), ShouldNotContainSubstring, "Failed")
+			So(capture.String(), ShouldContainSubstring, "Lease revoked")
+		})
+
+		Convey("does not revoke token if we don't have a service-specific token", func() {
+			var capture bytes.Buffer
+			log.SetOutput(&capture)
+
+			envVault.token = ""
+			err := envVault.MaybeRevokeToken()
+
+			log.SetOutput(ioutil.Discard)
+
+			So(err, ShouldBeNil)
+			So(capture.String(), ShouldNotContainSubstring, "Revoking service-specific parent token in Vault: test-token")
+			So(capture.String(), ShouldNotContainSubstring, "Lease revoked")
+		})
+	})
+}
+
 type mockVaultAPI struct {
 	VaultAPI
 }
@@ -334,6 +369,15 @@ func (m mockVaultAPI) RawRequest(r *api.Request) (*api.Response, error) {
 			Response: &http.Response{
 				StatusCode: statusCode,
 				Body:       ioutil.NopCloser(bytes.NewReader([]byte(body))),
+			},
+		}, nil
+	}
+
+	if strings.Contains(r.URL.Path, "auth/token/revoke-self") {
+		return &api.Response{
+			Response: &http.Response{
+				StatusCode: 204,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(``))),
 			},
 		}, nil
 	}

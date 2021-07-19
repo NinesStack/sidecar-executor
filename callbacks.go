@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/Nitro/sidecar-executor/container"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/relistan/go-director"
@@ -36,7 +38,7 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 	dockerLabels := container.LabelsForTask(taskInfo)
 
 	// Look up the AWS Role in Vault if we have one defined
-	if role, ok := dockerLabels["vault.AWSRole"]; ok {
+	if role := os.Getenv("EXECUTOR_VAULT_AWS_ROLE"); role != "" {
 		addEnvVars, err = exec.AddAndMonitorVaultAWSKeys(addEnvVars, role)
 		if err != nil {
 			log.Error(err.Error())
@@ -45,7 +47,7 @@ func (exec *sidecarExecutor) LaunchTask(taskInfo *mesos.TaskInfo) {
 		}
 
 		// We can also have a custom TTL up to the Vault-configured max
-		if ttl, ok := dockerLabels["vault.AWSRoleTTL"]; ok {
+		if ttl := os.Getenv("EXECUTOR_VAULT_AWS_ROLE_TTL"); ttl != "" {
 			err = exec.SetVaultAWSTTL(ttl)
 			if err != nil {
 				log.Error(err.Error())

@@ -273,7 +273,7 @@ func (v EnvVault) MaybeRevokeToken() error {
 		return nil
 	}
 
-	log.Info("Revoking service-specific parent token in Vault")
+	log.Infof("Revoking service-specific parent token in Vault: %s", v.token)
 
 	r := v.client.NewRequest("POST", "/v1/auth/token/revoke-self")
 
