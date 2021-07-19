@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,12 +18,54 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-func Test_NewDefaultVault(t *testing.T) {
-	Convey("NewDefaultVault() returns a properly configured Vault client", t, func() {
-		client := NewDefaultVault()
+func Capture(fn func()) string {
+	capture := &bytes.Buffer{}
+	log.SetOutput(capture)
+	fn()
+	log.SetOutput(ioutil.Discard)
+	return capture.String()
+}
 
-		So(client, ShouldNotBeNil)
-		So(client.client, ShouldNotBeNil)
+func Test_NewDefaultVault(t *testing.T) {
+	Convey("NewDefaultVault()", t, func() {
+		Reset(func() { os.Unsetenv("EXECUTOR_VAULT_AWS_ROLE") })
+
+		Convey("returns a properly configured Vault client", func() {
+			client := NewDefaultVault()
+
+			So(client, ShouldNotBeNil)
+			So(client.client, ShouldNotBeNil)
+		})
+
+		Convey("configures a service-specific token if required", func() {
+			os.Setenv("EXECUTOR_VAULT_AWS_ROLE", "some-role")
+
+			var client EnvVault
+
+			output := Capture(func() {
+				client = NewDefaultVault()
+			})
+
+			So(client, ShouldNotBeNil)
+			So(client.client, ShouldNotBeNil)
+
+			So(output, ShouldContainSubstring, "Attempting to get a parent token with TTL to match requested AWS Role")
+		})
+	})
+}
+
+func Test_parseTokenTTL(t *testing.T) {
+	Convey("parseTokenTTL()", t, func() {
+		Convey("parses a token when formatted properly", func() {
+			ttl, err := parseTokenTTL("1h1m1s")
+			So(err, ShouldBeNil)
+			So(ttl, ShouldEqual, 3661)
+		})
+
+		Convey("returns an error on non-duration values", func() {
+			_, err := parseTokenTTL("3600")
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 

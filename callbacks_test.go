@@ -87,6 +87,7 @@ type mockVault struct {
 	renewAWSCredsLeaseShouldError bool
 	maybeRevokeTokenShouldError   bool
 
+	maybeRevokeTokenWasCalled bool
 }
 
 func (v *mockVault) DecryptAllEnv(envs []string) ([]string, error) {
@@ -111,6 +112,8 @@ func (v *mockVault) DecryptAllEnv(envs []string) ([]string, error) {
 }
 
 func (v *mockVault) MaybeRevokeToken() error {
+	v.maybeRevokeTokenWasCalled = true
+
 	if v.maybeRevokeTokenShouldError {
 		return errors.New("Intentional test error")
 	}
@@ -713,6 +716,43 @@ func Test_ExecutorCallbacks(t *testing.T) {
 
 				// Make sure some things happened
 				So(capture.String(), ShouldContainSubstring, "No AWS lease to clean up, skipping")
+			})
+
+			Convey("Revoke a service-specific Vault token when AWS role is specified", func() {
+				os.Setenv("EXECUTOR_VAULT_AWS_ROLE", "valid-aws-role")
+				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
+
+				// We'll use logging output to validate that the goroutine ran
+				var capture bytes.Buffer
+				log.SetLevel(log.DebugLevel)
+				log.SetOutput(&capture)
+
+				exec.LaunchTask(&taskInfo)
+				exec.KillTask(&taskInfo.TaskID)
+				exec.watcherWg.Wait()
+
+				log.SetOutput(ioutil.Discard)
+				So(dummyVault.maybeRevokeTokenWasCalled, ShouldBeTrue)
+			})
+
+			Convey("Logs and error when AWS role is specified and we can't revoke our token", func() {
+				os.Setenv("EXECUTOR_VAULT_AWS_ROLE", "valid-aws-role")
+				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
+
+				// We'll use logging output to validate that the goroutine ran
+				var capture bytes.Buffer
+				log.SetLevel(log.DebugLevel)
+				log.SetOutput(&capture)
+
+				dummyVault.maybeRevokeTokenShouldError = true
+
+				exec.LaunchTask(&taskInfo)
+				exec.KillTask(&taskInfo.TaskID)
+				exec.watcherWg.Wait()
+
+				log.SetOutput(ioutil.Discard)
+				So(dummyVault.maybeRevokeTokenWasCalled, ShouldBeTrue)
+				So(capture.String(), ShouldContainSubstring, "Intentional test error")
 			})
 		})
 	})

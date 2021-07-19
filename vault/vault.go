@@ -33,6 +33,8 @@ import (
 const (
 	VaultURLScheme  = "vault"
 	VaultDefaultKey = "value"
+
+	DefaultAWSRoleTTL = 3600 // 1 hour
 )
 
 // The Vault interface represents a client that talks to Hashicorp Vault and
@@ -99,17 +101,18 @@ func NewDefaultVault() EnvVault {
 // those we'll be requesting for the service. Otherwise we can end up with the
 // service token expiring before we expect that to happen.
 func getAWSRoleVaultToken(envVault *EnvVault) error {
-	var ttl int
+	var (
+		ttl int = DefaultAWSRoleTTL
+		err error
+	)
 
 	log.Info("Attempting to get a parent token with TTL to match requested AWS Role")
 
 	if ttlStr := os.Getenv("EXECUTOR_VAULT_AWS_TTL"); ttlStr != "" {
-		ttlTmp, err := time.ParseDuration(ttlStr)
-		if ttlTmp < 1 || err != nil {
-			return fmt.Errorf("Invalid TTL passed in Docker label vaul.AWSRoleTTL. Could not parse: '%s'", ttlStr)
+		ttl, err = parseTokenTTL(ttlStr)
+		if err != nil {
+			return err
 		}
-		// Seconds() returns a float64. We want the seconds, downgraded to an int
-		ttl = int(ttlTmp.Seconds())
 	}
 
 	handler := &vaultTokenAuthHandler{client: envVault.client.(*api.Client)}
@@ -126,6 +129,19 @@ func getAWSRoleVaultToken(envVault *EnvVault) error {
 	return nil
 }
 
+// parseTokenTTL parse a token duration and converts down to an integer in seconds
+func parseTokenTTL(ttlStr string) (int, error) {
+	ttlTmp, err := time.ParseDuration(ttlStr)
+	if ttlTmp < 1 || err != nil {
+		return -1, fmt.Errorf("Invalid TTL passed in Docker label vaul.AWSRoleTTL. Could not parse: '%s'", ttlStr)
+	}
+
+	// Seconds() returns a float64. We want the seconds, downgraded to an int
+	ttl := int(ttlTmp.Seconds())
+
+	return ttl, nil
+}
+
 // DecryptAllEnv decrypts all env vars that contain a Vault path.  All values
 // staring with `vault://` are overridden by the secret value stored in the
 // path. For instance:
@@ -134,7 +150,7 @@ func getAWSRoleVaultToken(envVault *EnvVault) error {
 //
 //
 // By default, the key used to retrieve the contents of the Secret that Vault
-// returns is the string `VaultDefaultKey`. If you have more than one entry stored in a
+// returns is the string `VaultefaultKey`. If you have more than one entry stored in a
 // Secret and need to refer to them by name, you may append a query string
 // specifying the key, such as:
 //    vault://secret/prod-database?key=username
