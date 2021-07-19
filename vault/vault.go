@@ -80,7 +80,7 @@ func NewDefaultVault() EnvVault {
 	// Check if we are supposed to have our own token. If so, get one. Otherwise
 	// attempt to use the shared token from the file. If we're handling a role-specific
 	// set of creds, we need our own token's TTL to match those of the request.
-	if os.Getenv("EXECUTOR_VAULT_AWS_ROLE") != "" {
+	if os.Getenv("EXECUTOR_AWS_ROLE") != "" {
 		err := getAWSRoleVaultToken(&envVault)
 		if err != nil {
 			log.Errorf("Failed to get Vault parent Token to enable AWS Role: %s", err)
@@ -108,7 +108,7 @@ func getAWSRoleVaultToken(envVault *EnvVault) error {
 
 	log.Info("Attempting to get a parent token with TTL to match requested AWS Role")
 
-	if ttlStr := os.Getenv("EXECUTOR_VAULT_AWS_TTL"); ttlStr != "" {
+	if ttlStr := os.Getenv("EXECUTOR_AWS_TTL"); ttlStr != "" {
 		ttl, err = parseTokenTTL(ttlStr)
 		if err != nil {
 			return err

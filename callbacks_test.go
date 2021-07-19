@@ -196,9 +196,6 @@ func Test_ExecutorCallbacks(t *testing.T) {
 		Reset(func() {
 			log.SetLevel(log.FatalLevel)
 			fakeServer.Close()
-
-			os.Unsetenv("EXECUTOR_VAULT_AWS_ROLE")
-			os.Unsetenv("EXECUTOR_VAULT_AWS_ROLE_TTL")
 		})
 
 		// Sidecar services handler

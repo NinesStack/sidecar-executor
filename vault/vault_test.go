@@ -28,7 +28,7 @@ func Capture(fn func()) string {
 
 func Test_NewDefaultVault(t *testing.T) {
 	Convey("NewDefaultVault()", t, func() {
-		Reset(func() { os.Unsetenv("EXECUTOR_VAULT_AWS_ROLE") })
+		Reset(func() { os.Unsetenv("EXECUTOR_AWS_ROLE") })
 
 		Convey("returns a properly configured Vault client", func() {
 			client := NewDefaultVault()
@@ -38,7 +38,7 @@ func Test_NewDefaultVault(t *testing.T) {
 		})
 
 		Convey("configures a service-specific token if required", func() {
-			os.Setenv("EXECUTOR_VAULT_AWS_ROLE", "some-role")
+			os.Setenv("EXECUTOR_AWS_ROLE", "some-role")
 
 			var client EnvVault
 
