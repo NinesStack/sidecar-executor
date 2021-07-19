@@ -49,7 +49,7 @@ func Test_NewDefaultVault(t *testing.T) {
 			So(client, ShouldNotBeNil)
 			So(client.client, ShouldNotBeNil)
 
-			So(output, ShouldContainSubstring, "Attempting to get a parent token with TTL to match requested AWS Role")
+			So(output, ShouldContainSubstring, "Attempting to get a service-specific parent token with TTL to match requested AWS Role")
 		})
 	})
 }

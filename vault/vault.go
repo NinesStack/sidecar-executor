@@ -106,7 +106,7 @@ func getAWSRoleVaultToken(envVault *EnvVault) error {
 		err error
 	)
 
-	log.Info("Attempting to get a parent token with TTL to match requested AWS Role")
+	log.Info("Attempting to get a service-specific parent token with TTL to match requested AWS Role")
 
 	if ttlStr := os.Getenv("EXECUTOR_AWS_TTL"); ttlStr != "" {
 		ttl, err = parseTokenTTL(ttlStr)
@@ -125,6 +125,8 @@ func getAWSRoleVaultToken(envVault *EnvVault) error {
 	// Set the token on the client for use throughout its lifecycle
 	handler.SetToken(token)
 	envVault.token = token
+
+	log.Info("Service-specific token stored")
 
 	return nil
 }
