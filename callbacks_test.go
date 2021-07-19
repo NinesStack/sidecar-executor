@@ -108,6 +108,10 @@ func (v *mockVault) DecryptAllEnv(envs []string) ([]string, error) {
 	return decryptedEnv, nil
 }
 
+func (v *mockVault) MaybeRevokeToken() error {
+	return nil
+}
+
 func (v *mockVault) GetAWSCredsLease(role string) (*vault.VaultAWSCredsLease, error) {
 	if role == "valid-aws-role" {
 		return &vault.VaultAWSCredsLease{
@@ -137,7 +141,7 @@ func (v *mockVault) RenewAWSCredsLease(awsCredsLease *vault.VaultAWSCredsLease, 
 		return nil, errors.New("intentional test error from renew")
 	}
 	return &vault.VaultAWSCredsLease{
-		LeaseID: awsCredsLease.LeaseID,
+		LeaseID:         awsCredsLease.LeaseID,
 		LeaseExpiryTime: awsCredsLease.LeaseExpiryTime.Add(time.Duration(ttl) * time.Second),
 	}, nil
 }

@@ -221,7 +221,7 @@ func handleSignals(scExec *sidecarExecutor) {
 	}
 
 	time.Sleep(3 * time.Second) // Try to let it quit
-	os.Exit(exitCode)                // Ctrl-C received or equivalent
+	os.Exit(exitCode)           // Ctrl-C received or equivalent
 }
 
 func initConfig() (Config, error) {

@@ -303,7 +303,9 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		}
 	}
 
+	// Clean up an AWS lease we might have, and revoke our own token if needed.
 	exec.maybeCleanupAWSCredsLease()
+	exec.vault.MaybeRevokeToken()
 
 	exec.handleContainerExit(taskInfo, exitCode)
 
