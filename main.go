@@ -16,7 +16,7 @@ import (
 
 	"github.com/Nitro/sidecar-executor/mesosdriver"
 	"github.com/Nitro/sidecar/service"
-	"github.com/fsouza/go-dockerclient"
+	docker "github.com/fsouza/go-dockerclient"
 	mesosconfig "github.com/mesos/mesos-go/api/v1/lib/executor/config"
 	"github.com/relistan/envconfig"
 	log "github.com/sirupsen/logrus"
@@ -50,6 +50,10 @@ type Config struct {
 	ForceMemoryLimit        bool          `envconfig:"FORCE_MEMORY_LIMIT" default:"false"`
 	UseCpuShares            bool          `envconfig:"USE_CPU_SHARES" default:"false"`
 	Debug                   bool          `envconfig:"DEBUG" default:"false"`
+
+	// AWS Role options
+	AWSRole    string        `envconfig:"AWS_ROLE"`
+	AWSRoleTTL time.Duration `envconfig:"AWS_ROLE"`
 
 	// Mesos options
 	MesosMasterPort string `envconfig:"MESOS_MASTER_PORT" default:"5050"`
@@ -102,6 +106,8 @@ func logConfig(config Config) {
 	log.Infof(" * ContainerLogsStdout:     %t", config.ContainerLogsStdout)
 	log.Infof(" * SendDockerLabels:        %v", config.SendDockerLabels)
 	log.Infof(" * LogHostname:             %s", config.LogHostname)
+	log.Infof(" * AWSRole:                 %s", config.AWSRole)
+	log.Infof(" * AWSRoleTTL:              %s", config.AWSRoleTTL)
 	log.Infof(" * Debug:                   %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")

@@ -2,6 +2,8 @@ package container
 
 import (
 	"bytes"
+	"io/ioutil"
+	"log"
 	"runtime"
 	"strings"
 	"testing"
@@ -18,7 +20,7 @@ const (
 )
 
 func init() {
-	//log.SetOutput(ioutil.Discard)
+	log.SetOutput(ioutil.Discard)
 }
 
 func Test_PullImage(t *testing.T) {

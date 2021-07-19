@@ -227,6 +227,21 @@ with `EXECUTOR_`.
    field. Defaults to the OS hostname and can be overridden with `LOG_HOSTNAME`
    in the environment.
 
+Special AWS Role Configuration
+------------------------------
+
+In addition to all the executor level settings above, you may also pass the
+following env vars into the executor to enable the executor to maintain AWS
+creds with a specific role via Vault:
+
+ * `EXECUTOR_VAULT_AWS_ROLE` - specifies the AWS role (pre-existing in IAM/Vault) to
+   request. By itself this will give you the default TTL for the policy
+
+ * `EXECUTOR_VAULT_AWS_ROLE_TTL` - This will allow you extend the requested time, up to
+   the max allowed by Vault for the policy. The value is a string, specified
+   in [Go Duration format](https://golang.org/pkg/time/#ParseDuration). E.g.
+   "1m40s" for 1 minute and 40 seconds.
+
 Vault Configuration
 -------------------
 
@@ -250,20 +265,6 @@ tokens in Vault, and that doesn't work well. Especially in a fast job failure
 scenario where executors running on multiple machines might be generating
 tokens constantly.
 
-### Docker Labels
-
-In configurations where it is desired for Vault to handle provisioning of AWS
-credentials using the AWS provider, you may pass two Docker labels into the
-deploy to configure this behavior. They are passed as labels instead of env
-vars so that they can be picked up by logging systems. They are as follows:
-
- * `vault.AWSRole` - specifies the AWS role (pre-existing in IAM/Vault) to
-   request. By itself this will give you the default TTL for the policy
-
- * `vault.AWSRoleTTL` - This will allow you extend the requested time, up to
-   the max allowed by Vault for the policy. The value is a string, specified
-   in [Go Duration format](https://golang.org/pkg/time/#ParseDuration). E.g.
-   "1m40s" for 1 minute and 40 seconds.
 
 
 Configuring Docker Connectivity
