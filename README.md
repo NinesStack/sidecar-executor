@@ -234,10 +234,10 @@ In addition to all the executor level settings above, you may also pass the
 following env vars into the executor to enable the executor to maintain AWS
 creds with a specific role via Vault:
 
- * `EXECUTOR_VAULT_AWS_ROLE` - specifies the AWS role (pre-existing in IAM/Vault) to
+ * `EXECUTOR_AWS_ROLE` - specifies the AWS role (pre-existing in IAM/Vault) to
    request. By itself this will give you the default TTL for the policy
 
- * `EXECUTOR_VAULT_AWS_ROLE_TTL` - This will allow you extend the requested time, up to
+ * `EXECUTOR_AWS_ROLE_TTL` - This will allow you extend the requested time, up to
    the max allowed by Vault for the policy. The value is a string, specified
    in [Go Duration format](https://golang.org/pkg/time/#ParseDuration). E.g.
    "1m40s" for 1 minute and 40 seconds.
