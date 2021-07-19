@@ -53,7 +53,7 @@ type Config struct {
 
 	// AWS Role options
 	AWSRole    string        `envconfig:"AWS_ROLE"`
-	AWSRoleTTL time.Duration `envconfig:"AWS_ROLE"`
+	AWSRoleTTL time.Duration `envconfig:"AWS_ROLE_TTL"`
 
 	// Mesos options
 	MesosMasterPort string `envconfig:"MESOS_MASTER_PORT" default:"5050"`
