@@ -152,7 +152,7 @@ func parseTokenTTL(ttlStr string) (int, error) {
 //
 //
 // By default, the key used to retrieve the contents of the Secret that Vault
-// returns is the string `VaultefaultKey`. If you have more than one entry stored in a
+// returns is the string `VaultDefaultKey`. If you have more than one entry stored in a
 // Secret and need to refer to them by name, you may append a query string
 // specifying the key, such as:
 //    vault://secret/prod-database?key=username
