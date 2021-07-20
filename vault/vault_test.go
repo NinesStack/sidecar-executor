@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,12 +18,54 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-func Test_NewDefaultVault(t *testing.T) {
-	Convey("NewDefaultVault() returns a properly configured Vault client", t, func() {
-		client := NewDefaultVault()
+func Capture(fn func()) string {
+	capture := &bytes.Buffer{}
+	log.SetOutput(capture)
+	fn()
+	log.SetOutput(ioutil.Discard)
+	return capture.String()
+}
 
-		So(client, ShouldNotBeNil)
-		So(client.client, ShouldNotBeNil)
+func Test_NewDefaultVault(t *testing.T) {
+	Convey("NewDefaultVault()", t, func() {
+		Reset(func() { os.Unsetenv("EXECUTOR_AWS_ROLE") })
+
+		Convey("returns a properly configured Vault client", func() {
+			client := NewDefaultVault()
+
+			So(client, ShouldNotBeNil)
+			So(client.client, ShouldNotBeNil)
+		})
+
+		Convey("configures a service-specific token if required", func() {
+			os.Setenv("EXECUTOR_AWS_ROLE", "some-role")
+
+			var client EnvVault
+
+			output := Capture(func() {
+				client = NewDefaultVault()
+			})
+
+			So(client, ShouldNotBeNil)
+			So(client.client, ShouldNotBeNil)
+
+			So(output, ShouldContainSubstring, "Attempting to get a service-specific parent token with TTL to match requested AWS Role")
+		})
+	})
+}
+
+func Test_parseTokenTTL(t *testing.T) {
+	Convey("parseTokenTTL()", t, func() {
+		Convey("parses a token when formatted properly", func() {
+			ttl, err := parseTokenTTL("1h1m1s")
+			So(err, ShouldBeNil)
+			So(ttl, ShouldEqual, 3661)
+		})
+
+		Convey("returns an error on non-duration values", func() {
+			_, err := parseTokenTTL("3600")
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 
@@ -215,6 +258,41 @@ func Test_RenewAWSCredsLease(t *testing.T) {
 	})
 }
 
+func Test_MaybeRevokeToken(t *testing.T) {
+	Convey("MaybeRevokeToken()", t, func() {
+		envVault := EnvVault{client: &mockVaultAPI{}}
+
+		Convey("revokes our token if we have a service-specific token", func() {
+			var capture bytes.Buffer
+			log.SetOutput(&capture)
+
+			envVault.token = "test-token"
+			err := envVault.MaybeRevokeToken()
+
+			log.SetOutput(ioutil.Discard)
+
+			So(err, ShouldBeNil)
+			So(capture.String(), ShouldContainSubstring, "Revoking service-specific parent token in Vault: test-token")
+			So(capture.String(), ShouldNotContainSubstring, "Failed")
+			So(capture.String(), ShouldContainSubstring, "Lease revoked")
+		})
+
+		Convey("does not revoke token if we don't have a service-specific token", func() {
+			var capture bytes.Buffer
+			log.SetOutput(&capture)
+
+			envVault.token = ""
+			err := envVault.MaybeRevokeToken()
+
+			log.SetOutput(ioutil.Discard)
+
+			So(err, ShouldBeNil)
+			So(capture.String(), ShouldNotContainSubstring, "Revoking service-specific parent token in Vault: test-token")
+			So(capture.String(), ShouldNotContainSubstring, "Lease revoked")
+		})
+	})
+}
+
 type mockVaultAPI struct {
 	VaultAPI
 }
@@ -334,6 +412,15 @@ func (m mockVaultAPI) RawRequest(r *api.Request) (*api.Response, error) {
 			Response: &http.Response{
 				StatusCode: statusCode,
 				Body:       ioutil.NopCloser(bytes.NewReader([]byte(body))),
+			},
+		}, nil
+	}
+
+	if strings.Contains(r.URL.Path, "auth/token/revoke-self") {
+		return &api.Response{
+			Response: &http.Response{
+				StatusCode: 204,
+				Body:       ioutil.NopCloser(bytes.NewReader([]byte(``))),
 			},
 		}, nil
 	}

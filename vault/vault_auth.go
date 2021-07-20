@@ -16,6 +16,7 @@ import (
 const (
 	DefaultTokenTTL  = 86400 // 1 day
 	TokenGracePeriod = 3600  // 1 hour
+	StartupGracePeriod = 600 // 10 minutes
 )
 
 // Wrapper for parts of the Hashicorp Vault API we have to do more
@@ -94,13 +95,27 @@ func GetToken(client TokenAuthHandler) (err error) {
 	}
 
 	// Fall back to logging in with user/pass creds
-	token, err = GetTokenWithLogin(client)
+	ttl := GetTTL()
+	token, err = GetTokenWithLogin(client, ttl)
 	if err != nil {
 		return err
 	}
 
+	// Store the token for other executors
+	CacheToken(token)
+
 	client.SetToken(token)
 	return nil
+}
+
+// CacheToken caches the token for all the other executors to use
+func CacheToken(token string) {
+	if tokenFile := os.Getenv("VAULT_TOKEN_FILE"); tokenFile != "" {
+		err := ioutil.WriteFile(tokenFile, []byte(token), 0600)
+		if err != nil {
+			log.Errorf("Error writing Vault token file: %s", err)
+		}
+	}
 }
 
 // GetTokenFromFile attempts to read a token from the Vault token file as
@@ -128,6 +143,8 @@ func GetTokenFromFile(tokenFile string) (string, error) {
 	return strings.TrimSpace(string(rawToken)), nil
 }
 
+// GetTTL attempts to grab a TTL from the environment and then falls back to
+// the configured default if none is found.
 func GetTTL() int {
 	var ttl int = DefaultTokenTTL
 
@@ -140,7 +157,7 @@ func GetTTL() int {
 
 // GetTokenWithLogin calls out to the Vault API and authenticates with userpass
 // credentials.
-func GetTokenWithLogin(client TokenAuthHandler) (string, error) {
+func GetTokenWithLogin(client TokenAuthHandler, ttl int) (string, error) {
 	username := os.Getenv("VAULT_USERNAME")
 	password := os.Getenv("VAULT_PASSWORD")
 
@@ -148,24 +165,15 @@ func GetTokenWithLogin(client TokenAuthHandler) (string, error) {
 		return "", fmt.Errorf("Must set VAULT_USERNAME and VAULT_PASSWORD")
 	}
 
-	ttl := GetTTL()
-
 	options := map[string]interface{}{
 		"password": password,
-		"ttl":      ttl,
-		"max_ttl":  ttl,
+		"ttl":      ttl + StartupGracePeriod, // Allow some leeway to cover startup time
+		"max_ttl":  ttl + StartupGracePeriod,
 	}
 
 	token, err := client.Login(username, password, options)
 	if err != nil {
 		return "", err // Errors are nicely wrapped already
-	}
-
-	if tokenFile := os.Getenv("VAULT_TOKEN_FILE"); tokenFile != "" {
-		err = ioutil.WriteFile(tokenFile, []byte(token), 0600)
-		if err != nil {
-			log.Errorf("Error writing Vault token file: %s", err)
-		}
 	}
 
 	return token, nil

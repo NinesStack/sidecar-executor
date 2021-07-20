@@ -303,7 +303,12 @@ func (exec *sidecarExecutor) monitorTask(cntnrId string, taskInfo *mesos.TaskInf
 		}
 	}
 
+	// Clean up an AWS lease we might have, and revoke our own token if needed.
 	exec.maybeCleanupAWSCredsLease()
+	err = exec.vault.MaybeRevokeToken()
+	if err != nil {
+		log.Error(err.Error())
+	}
 
 	exec.handleContainerExit(taskInfo, exitCode)
 
@@ -488,12 +493,8 @@ func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role
 
 // SetVaultAWSTTL attempts to set the ttl in Vault for the AWS creds we have a lease for. This
 // will allow longer TTLs than the default, limited to no more than the max allowed by Vault.
-func (exec *sidecarExecutor) SetVaultAWSTTL(ttlStr string) error {
+func (exec *sidecarExecutor) SetVaultAWSTTL(ttl time.Duration) error {
 	log.Infof("Renewing AWS Lease ID '%s'", exec.awsCredsLease.LeaseID)
-	ttl, err := time.ParseDuration(ttlStr)
-	if ttl < 1 || err != nil {
-		return fmt.Errorf("Invalid TTL passed in Docker label vaul.AWSRoleTTL. Could not parse: '%s'", ttlStr)
-	}
 
 	newLease, err := exec.vault.RenewAWSCredsLease(exec.awsCredsLease, int(ttl.Seconds()))
 	if err != nil {

@@ -3,14 +3,14 @@ package container
 import (
 	"bytes"
 	"io/ioutil"
+	"log"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/fsouza/go-dockerclient"
+	docker "github.com/fsouza/go-dockerclient"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
-	log "github.com/sirupsen/logrus"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -188,7 +188,7 @@ func Test_ConfigGeneration(t *testing.T) {
 		svcNameLabel := "ServiceName=" + svcName
 
 		envName := "dev"
-		envNameLabel := "EnvironmentName=" + envName
+		envNameLabel := "Environment=" + envName
 
 		host := mesos.ContainerInfo_DockerInfo_HOST
 
@@ -334,23 +334,23 @@ func Test_ConfigGeneration(t *testing.T) {
 
 		Convey("maps ports into the environment", func() {
 			// We index backward to find the vars we just set
-			So(opts.Config.Env[len(opts.Config.Env)-6], ShouldEqual, "MESOS_PORT_443=10270")
+			So(opts.Config.Env, ShouldContain, "MESOS_PORT_443=10270")
 		})
 
 		Convey("maps the hostname into the environment", func() {
-			So(opts.Config.Env[len(opts.Config.Env)-4], ShouldEqual, "MESOS_HOSTNAME="+hostname)
+			So(opts.Config.Env, ShouldContain, "MESOS_HOSTNAME="+hostname)
 		})
 
 		Convey("maps the ServiceName into the environment", func() {
-			So(opts.Config.Env[len(opts.Config.Env)-3], ShouldEqual, "SERVICE_NAME="+svcName)
+			So(opts.Config.Env, ShouldContain, "SERVICE_NAME="+svcName)
 		})
 
 		Convey("maps the EnvironmentName into the environment", func() {
-			So(opts.Config.Env[len(opts.Config.Env)-2], ShouldEqual, "ENVIRONMENT_NAME="+envName)
+			So(opts.Config.Env, ShouldContain, "ENVIRONMENT="+envName)
 		})
 
 		Convey("maps the version into the environment", func() {
-			So(opts.Config.Env[len(opts.Config.Env)-1], ShouldEqual, "SERVICE_VERSION=1.0.0")
+			So(opts.Config.Env, ShouldContain, "SERVICE_VERSION=1.0.0")
 		})
 
 		Convey("fills in the exposed ports", func() {

@@ -77,8 +77,8 @@ func Test_GetToken(t *testing.T) {
 				So(mock.ValidateWasCalled, ShouldBeFalse)
 				So(mock.token, ShouldEqual, "from_login")
 				So(mock.loginOptions["password"], ShouldEqual, "guinevere")
-				So(mock.loginOptions["ttl"], ShouldEqual, ttl)
-				So(mock.loginOptions["max_ttl"], ShouldEqual, ttl)
+				So(mock.loginOptions["ttl"], ShouldEqual, ttl+StartupGracePeriod)
+				So(mock.loginOptions["max_ttl"], ShouldEqual, ttl+StartupGracePeriod)
 			})
 
 			Convey("errors when Login fails", func() {
@@ -158,7 +158,7 @@ func Test_GetToken(t *testing.T) {
 }
 
 type mockTokenAuthHandler struct {
-	token             string
+	token string
 
 	LoginWasCalled    bool
 	ValidateWasCalled bool

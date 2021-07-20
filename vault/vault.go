@@ -33,6 +33,8 @@ import (
 const (
 	VaultURLScheme  = "vault"
 	VaultDefaultKey = "value"
+
+	DefaultAWSRoleTTL = 3600 // 1 hour
 )
 
 // The Vault interface represents a client that talks to Hashicorp Vault and
@@ -42,11 +44,15 @@ type Vault interface {
 	GetAWSCredsLease(role string) (*VaultAWSCredsLease, error)
 	RevokeAWSCredsLease(leaseID, role string) error
 	RenewAWSCredsLease(awsCredsLease *VaultAWSCredsLease, ttl int) (*VaultAWSCredsLease, error)
+	MaybeRevokeToken() error
 }
 
 // Client to replace vault paths by the secret value stored in Hashicorp Vault.
 type EnvVault struct {
 	client VaultAPI
+
+	// The token we are using, *if* it's specific to this executor and not shared
+	token string
 }
 
 // Our own narrowly-scoped interface for Hashicorp Vault Client
@@ -69,15 +75,73 @@ func NewDefaultVault() EnvVault {
 	log.Infof("Vault address '%s' ", conf.Address)
 
 	vaultClient, _ := api.NewClient(conf)
+	envVault := EnvVault{client: vaultClient}
 
-	if os.Getenv("VAULT_TOKEN") == "" {
+	// Check if we are supposed to have our own token. If so, get one. Otherwise
+	// attempt to use the shared token from the file. If we're handling a role-specific
+	// set of creds, we need our own token's TTL to match those of the request.
+	if os.Getenv("EXECUTOR_AWS_ROLE") != "" {
+		err := getAWSRoleVaultToken(&envVault)
+		if err != nil {
+			log.Errorf("Failed to get Vault parent Token to enable AWS Role: %s", err)
+		}
+	} else if os.Getenv("VAULT_TOKEN") == "" {
+		// This will be a shared token
 		err := GetToken(&vaultTokenAuthHandler{client: vaultClient})
 		if err != nil {
 			log.Errorf("Failure authenticating with Vault: %s", err)
 		}
 	}
+	// otherwise the Vault client will use the one in the env var itself
 
-	return EnvVault{client: vaultClient}
+	return envVault
+}
+
+// getAWSRoleVaultToken is called when we need to have a TTL and token to match
+// those we'll be requesting for the service. Otherwise we can end up with the
+// service token expiring before we expect that to happen.
+func getAWSRoleVaultToken(envVault *EnvVault) error {
+	var (
+		ttl int = DefaultAWSRoleTTL
+		err error
+	)
+
+	log.Info("Attempting to get a service-specific parent token with TTL to match requested AWS Role")
+
+	if ttlStr := os.Getenv("EXECUTOR_AWS_TTL"); ttlStr != "" {
+		ttl, err = parseTokenTTL(ttlStr)
+		if err != nil {
+			return err
+		}
+	}
+
+	handler := &vaultTokenAuthHandler{client: envVault.client.(*api.Client)}
+
+	token, err := GetTokenWithLogin(handler, ttl)
+	if err != nil {
+		return err
+	}
+
+	// Set the token on the client for use throughout its lifecycle
+	handler.SetToken(token)
+	envVault.token = token
+
+	log.Info("Service-specific token stored")
+
+	return nil
+}
+
+// parseTokenTTL parse a token duration and converts down to an integer in seconds
+func parseTokenTTL(ttlStr string) (int, error) {
+	ttlTmp, err := time.ParseDuration(ttlStr)
+	if ttlTmp < 1 || err != nil {
+		return -1, fmt.Errorf("Invalid TTL passed in Docker label vaul.AWSRoleTTL. Could not parse: '%s'", ttlStr)
+	}
+
+	// Seconds() returns a float64. We want the seconds, downgraded to an int
+	ttl := int(ttlTmp.Seconds())
+
+	return ttl, nil
 }
 
 // DecryptAllEnv decrypts all env vars that contain a Vault path.  All values
@@ -216,6 +280,41 @@ type VaultAWSCredsLease struct {
 	LeaseExpiryTime time.Time
 	LeaseID         string
 	Role            string
+}
+
+// MaybeRevokeToken will be called on shutdown, and *if* we cached a parent
+// token that was specific to this service, then we will expire it. If we
+// are using the shared token, we will not expire it.
+func (v EnvVault) MaybeRevokeToken() error {
+	// If we don't have one, this is a noop
+	if v.token == "" {
+		return nil
+	}
+
+	log.Infof("Revoking service-specific parent token in Vault: %s", v.token)
+
+	r := v.client.NewRequest("POST", "/v1/auth/token/revoke-self")
+
+	resp, err := v.client.RawRequest(r) // No body
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	// The Vault API is a little bit shit. We get a 204 back if the request was
+	// accepted, whether or not this is a valid lease. Adding the `sync` arg
+	// does not change this behavior. So... 204 is all we can look at.
+	if resp.StatusCode != 204 {
+		return fmt.Errorf(
+			"Failed to revoke service-specific parent token, got response code %d",
+			resp.StatusCode,
+		)
+	}
+
+	log.Info("Lease revoked")
+
+	return nil
 }
 
 // GetAWSCredsLease calls the Vault API and asks for AWS creds for a particular role,

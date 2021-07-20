@@ -85,6 +85,9 @@ func (d *mockMesosDriver) Stop() {
 type mockVault struct {
 	failDecrypt                   bool
 	renewAWSCredsLeaseShouldError bool
+	maybeRevokeTokenShouldError   bool
+
+	maybeRevokeTokenWasCalled bool
 }
 
 func (v *mockVault) DecryptAllEnv(envs []string) ([]string, error) {
@@ -106,6 +109,15 @@ func (v *mockVault) DecryptAllEnv(envs []string) ([]string, error) {
 	}
 
 	return decryptedEnv, nil
+}
+
+func (v *mockVault) MaybeRevokeToken() error {
+	v.maybeRevokeTokenWasCalled = true
+
+	if v.maybeRevokeTokenShouldError {
+		return errors.New("Intentional test error")
+	}
+	return nil
 }
 
 func (v *mockVault) GetAWSCredsLease(role string) (*vault.VaultAWSCredsLease, error) {
@@ -137,7 +149,7 @@ func (v *mockVault) RenewAWSCredsLease(awsCredsLease *vault.VaultAWSCredsLease, 
 		return nil, errors.New("intentional test error from renew")
 	}
 	return &vault.VaultAWSCredsLease{
-		LeaseID: awsCredsLease.LeaseID,
+		LeaseID:         awsCredsLease.LeaseID,
 		LeaseExpiryTime: awsCredsLease.LeaseExpiryTime.Add(time.Duration(ttl) * time.Second),
 	}, nil
 }
@@ -428,7 +440,7 @@ func Test_ExecutorCallbacks(t *testing.T) {
 			})
 
 			Convey("Gets AWS creds from Vault when a role is specified", func() {
-				dummyContainerLabels["vault.AWSRole"] = "valid-aws-role"
+				exec.config.AWSRole = "valid-aws-role"
 				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
 
 				// We'll use logging output to validate that the goroutine ran
@@ -450,8 +462,8 @@ func Test_ExecutorCallbacks(t *testing.T) {
 			})
 
 			Convey("Ups the TTL on creds from Vault when specified", func() {
-				dummyContainerLabels["vault.AWSRole"] = "valid-aws-role"
-				dummyContainerLabels["vault.AWSRoleTTL"] = "1m40s"
+				exec.config.AWSRole = "valid-aws-role"
+				exec.config.AWSRoleTTL = time.Duration(1*time.Minute+40*time.Second)
 				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
 
 				// We'll use logging output to validate that the goroutine ran
@@ -469,25 +481,8 @@ func Test_ExecutorCallbacks(t *testing.T) {
 				So(capture.String(), ShouldNotContainSubstring, "Unable to renew")
 			})
 
-			Convey("Fails the deploy when the TTL is not parseable", func() {
-				dummyContainerLabels["vault.AWSRole"] = "valid-aws-role"
-				dummyContainerLabels["vault.AWSRoleTTL"] = "100"
-				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
-
-				// We'll use logging output to validate that the goroutine ran
-				var capture bytes.Buffer
-				log.SetLevel(log.DebugLevel)
-				log.SetOutput(&capture)
-
-				exec.LaunchTask(&taskInfo)
-
-				log.SetOutput(ioutil.Discard)
-
-				So(capture.String(), ShouldContainSubstring, "Invalid TTL passed in Docker label vaul.AWSRoleTTL")
-			})
-
 			Convey("Fails to launch a task when the AWS Rols is wrong", func() {
-				dummyContainerLabels["vault.AWSRole"] = "invalid-aws-role"
+				exec.config.AWSRole = "invalid-aws-role"
 				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
 
 				var capture bytes.Buffer
@@ -669,7 +664,7 @@ func Test_ExecutorCallbacks(t *testing.T) {
 			})
 
 			Convey("Revokes AWS creds from Vault when have a lease", func() {
-				dummyContainerLabels["vault.AWSRole"] = "valid-aws-role"
+				exec.config.AWSRole = "valid-aws-role"
 				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
 
 				// We'll use logging output to validate that the goroutine ran
@@ -701,6 +696,43 @@ func Test_ExecutorCallbacks(t *testing.T) {
 
 				// Make sure some things happened
 				So(capture.String(), ShouldContainSubstring, "No AWS lease to clean up, skipping")
+			})
+
+			Convey("Revoke a service-specific Vault token when AWS role is specified", func() {
+				exec.config.AWSRole = "valid-aws-role"
+				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
+
+				// We'll use logging output to validate that the goroutine ran
+				var capture bytes.Buffer
+				log.SetLevel(log.DebugLevel)
+				log.SetOutput(&capture)
+
+				exec.LaunchTask(&taskInfo)
+				exec.KillTask(&taskInfo.TaskID)
+				exec.watcherWg.Wait()
+
+				log.SetOutput(ioutil.Discard)
+				So(dummyVault.maybeRevokeTokenWasCalled, ShouldBeTrue)
+			})
+
+			Convey("Logs and error when AWS role is specified and we can't revoke our token", func() {
+				exec.config.AWSRole = "valid-aws-role"
+				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
+
+				// We'll use logging output to validate that the goroutine ran
+				var capture bytes.Buffer
+				log.SetLevel(log.DebugLevel)
+				log.SetOutput(&capture)
+
+				dummyVault.maybeRevokeTokenShouldError = true
+
+				exec.LaunchTask(&taskInfo)
+				exec.KillTask(&taskInfo.TaskID)
+				exec.watcherWg.Wait()
+
+				log.SetOutput(ioutil.Discard)
+				So(dummyVault.maybeRevokeTokenWasCalled, ShouldBeTrue)
+				So(capture.String(), ShouldContainSubstring, "Intentional test error")
 			})
 		})
 	})
