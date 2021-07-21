@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,9 +15,9 @@ import (
 )
 
 const (
-	DefaultTokenTTL  = 86400 // 1 day
-	TokenGracePeriod = 3600  // 1 hour
-	StartupGracePeriod = 600 // 10 minutes
+	DefaultTokenTTL    = 86400 // 1 day
+	TokenGracePeriod   = 3600  // 1 hour
+	StartupGracePeriod = 600   // 10 minutes
 )
 
 // Wrapper for parts of the Hashicorp Vault API we have to do more
@@ -25,6 +26,7 @@ const (
 type TokenAuthHandler interface {
 	Validate(token string) (*api.Secret, error)
 	Login(username string, password string, options map[string]interface{}) (string, error)
+	Renew(token string, ttl int) error
 	SetToken(token string)
 }
 
@@ -51,6 +53,12 @@ func (f *vaultTokenAuthHandler) SetToken(token string) {
 func (f *vaultTokenAuthHandler) Login(username string, password string,
 	options map[string]interface{}) (string, error) {
 
+	// Vault has a shit API
+	if len(options) > 1 {
+		return "",
+			errors.New("You can ONLY pass a `password` option to Login(), received more")
+	}
+
 	path := fmt.Sprintf("auth/userpass/login/%s", username)
 	secret, err := f.client.Logical().Write(path, options)
 	if err != nil {
@@ -70,9 +78,54 @@ func (f *vaultTokenAuthHandler) Login(username string, password string,
 	return token, nil
 }
 
+// Renew does just that with a vault Token. Returns an error if anything went
+// wrong. Otherwise, you got the TTL you asked for... as far as we can tell.
+func (f *vaultTokenAuthHandler) Renew(token string, ttl int) error {
+	// Pass our token, and the TTL, which will be the whole increment
+	options := map[string]interface{}{
+		"token":     token,
+		"increment": ttl,
+	}
+
+	resp, err := f.client.Logical().Write("auth/token/renew", options)
+	if err != nil {
+		return fmt.Errorf("Error renewing token: %w", err)
+	}
+	if resp == nil {
+		return fmt.Errorf("Empty response from credential provider")
+	}
+
+	// Connect up and find out our new TTL
+	resp, err = f.client.Auth().Token().Lookup(token)
+	if err != nil {
+		return fmt.Errorf("Unable to look up token: %s", err)
+	}
+	if resp == nil {
+		return errors.New("Invalid response from token lookup")
+	}
+
+	log.Infof("%#v", resp.Data)
+
+	ttlRaw, ok := resp.Data["ttl"].(json.Number)
+	if !ok {
+		return errors.New("No ttl value found in data object for token")
+	}
+	ttlInt, _ := ttlRaw.Int64()
+
+	if ttlInt == int64(ttl) {
+		log.Infof("Successfully renewed token with Vault. New TTL: %d", ttlInt)
+	} else {
+		log.Warnf("FAILED to get TTL we asked for! Asked for: %d, Got: %d", ttl, ttlInt)
+	}
+	return nil
+}
+
 // GetToken uses username and password auth to get a Vault Token
-func GetToken(client TokenAuthHandler) (err error) {
-	var token string
+func GetToken(client TokenAuthHandler) error {
+	var (
+		token string
+		err error
+	)
 
 	if tokenFile := os.Getenv("VAULT_TOKEN_FILE"); tokenFile != "" {
 		token, err = GetTokenFromFile(tokenFile)
@@ -80,14 +133,12 @@ func GetToken(client TokenAuthHandler) (err error) {
 
 	if err == nil && token != "" {
 		// Reach out to the API to make sure it's good
-		t, err := client.Validate(token)
-
-		if err == nil && t != nil {
+		_, err := client.Validate(token)
+		if err == nil {
 			client.SetToken(token)
 			return nil
 		}
-
-		log.Warn("Retrieved token is not valid, falling back")
+		log.Warnf("Retrieved token is not valid: %s. Re-logging in", err)
 	}
 
 	if err != nil {
@@ -103,8 +154,6 @@ func GetToken(client TokenAuthHandler) (err error) {
 
 	// Store the token for other executors
 	CacheToken(token)
-
-	client.SetToken(token)
 	return nil
 }
 
@@ -140,7 +189,9 @@ func GetTokenFromFile(tokenFile string) (string, error) {
 
 	log.Infof("Re-using Vault token from token file: %s", tokenFile)
 
-	return strings.TrimSpace(string(rawToken)), nil
+	token := strings.TrimSpace(string(rawToken))
+
+	return token, nil
 }
 
 // GetTTL attempts to grab a TTL from the environment and then falls back to
@@ -165,13 +216,17 @@ func GetTokenWithLogin(client TokenAuthHandler, ttl int) (string, error) {
 		return "", fmt.Errorf("Must set VAULT_USERNAME and VAULT_PASSWORD")
 	}
 
-	options := map[string]interface{}{
-		"password": password,
-		"ttl":      ttl + StartupGracePeriod, // Allow some leeway to cover startup time
-		"max_ttl":  ttl + StartupGracePeriod,
-	}
+	options := map[string]interface{}{ "password": password }
 
 	token, err := client.Login(username, password, options)
+	if err != nil {
+		return "", err // Errors are nicely wrapped already
+	}
+
+	client.SetToken(token)
+
+	// Attempt to renew with the proper TTL
+	err = client.Renew(token, ttl + StartupGracePeriod)
 	if err != nil {
 		return "", err // Errors are nicely wrapped already
 	}

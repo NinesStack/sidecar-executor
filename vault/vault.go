@@ -108,7 +108,7 @@ func getAWSRoleVaultToken(envVault *EnvVault) error {
 
 	log.Info("Attempting to get a service-specific parent token with TTL to match requested AWS Role")
 
-	if ttlStr := os.Getenv("EXECUTOR_AWS_TTL"); ttlStr != "" {
+	if ttlStr := os.Getenv("EXECUTOR_AWS_ROLE_TTL"); ttlStr != "" {
 		ttl, err = parseTokenTTL(ttlStr)
 		if err != nil {
 			return err
@@ -135,11 +135,13 @@ func getAWSRoleVaultToken(envVault *EnvVault) error {
 func parseTokenTTL(ttlStr string) (int, error) {
 	ttlTmp, err := time.ParseDuration(ttlStr)
 	if ttlTmp < 1 || err != nil {
-		return -1, fmt.Errorf("Invalid TTL passed in Docker label vaul.AWSRoleTTL. Could not parse: '%s'", ttlStr)
+		return -1, fmt.Errorf("Invalid TTL passed in AWSRoleTTL . Could not parse: '%s'", ttlStr)
 	}
 
-	// Seconds() returns a float64. We want the seconds, downgraded to an int
-	ttl := int(ttlTmp.Seconds())
+	// We want the seconds in the duraction, downgraded to an int.
+	ttl := int(ttlTmp / time.Second)
+
+	log.Warnf("KMDEBUG: %s, %#v, %d", ttlStr, ttlTmp, ttl)
 
 	return ttl, nil
 }
