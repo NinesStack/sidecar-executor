@@ -112,7 +112,7 @@ func (f *vaultTokenAuthHandler) Renew(token string, ttl int) error {
 	}
 	ttlInt, _ := ttlRaw.Int64()
 
-	if ttlInt == int64(ttl) {
+	if int64(ttl)-10 > ttlInt { // We have to account for the API call time. 10 seconds is plenty
 		log.Infof("Successfully renewed token with Vault. New TTL: %d", ttlInt)
 	} else {
 		log.Warnf("FAILED to get TTL we asked for! Asked for: %d, Got: %d", ttl, ttlInt)
@@ -124,7 +124,7 @@ func (f *vaultTokenAuthHandler) Renew(token string, ttl int) error {
 func GetToken(client TokenAuthHandler) error {
 	var (
 		token string
-		err error
+		err   error
 	)
 
 	if tokenFile := os.Getenv("VAULT_TOKEN_FILE"); tokenFile != "" {
@@ -216,7 +216,7 @@ func GetTokenWithLogin(client TokenAuthHandler, ttl int) (string, error) {
 		return "", fmt.Errorf("Must set VAULT_USERNAME and VAULT_PASSWORD")
 	}
 
-	options := map[string]interface{}{ "password": password }
+	options := map[string]interface{}{"password": password}
 
 	token, err := client.Login(username, password, options)
 	if err != nil {
@@ -226,7 +226,7 @@ func GetTokenWithLogin(client TokenAuthHandler, ttl int) (string, error) {
 	client.SetToken(token)
 
 	// Attempt to renew with the proper TTL
-	err = client.Renew(token, ttl + StartupGracePeriod)
+	err = client.Renew(token, ttl+StartupGracePeriod)
 	if err != nil {
 		return "", err // Errors are nicely wrapped already
 	}

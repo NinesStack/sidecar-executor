@@ -141,8 +141,6 @@ func parseTokenTTL(ttlStr string) (int, error) {
 	// We want the seconds in the duraction, downgraded to an int.
 	ttl := int(ttlTmp / time.Second)
 
-	log.Warnf("KMDEBUG: %s, %#v, %d", ttlStr, ttlTmp, ttl)
-
 	return ttl, nil
 }
 
