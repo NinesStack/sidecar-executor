@@ -75,6 +75,8 @@ func (f *vaultTokenAuthHandler) Login(username string, password string,
 		return "", err
 	}
 
+	log.Debugf("Auth Response: %#v", secret)
+
 	return token, nil
 }
 
@@ -104,18 +106,16 @@ func (f *vaultTokenAuthHandler) Renew(token string, ttl int) error {
 		return errors.New("Invalid response from token lookup")
 	}
 
-	log.Infof("%#v", resp.Data)
-
 	ttlRaw, ok := resp.Data["ttl"].(json.Number)
 	if !ok {
 		return errors.New("No ttl value found in data object for token")
 	}
 	ttlInt, _ := ttlRaw.Int64()
 
-	if int64(ttl)-10 > ttlInt { // We have to account for the API call time. 10 seconds is plenty
-		log.Infof("Successfully renewed token with Vault. New TTL: %d", ttlInt)
-	} else {
+	if ttlInt + 10 < int64(ttl) { // We have to account for the API call time. 10 seconds is plenty
 		log.Warnf("FAILED to get TTL we asked for! Asked for: %d, Got: %d", ttl, ttlInt)
+	} else {
+		log.Infof("Successfully renewed token with Vault. New TTL: %d", ttlInt)
 	}
 	return nil
 }

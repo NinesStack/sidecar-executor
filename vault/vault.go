@@ -49,10 +49,21 @@ type Vault interface {
 
 // Client to replace vault paths by the secret value stored in Hashicorp Vault.
 type EnvVault struct {
-	client VaultAPI
+	client  VaultAPI
+	config  *EnvVaultConfig
+	handler TokenAuthHandler
 
 	// The token we are using, *if* it's specific to this executor and not shared
 	token string
+}
+
+// An EnvVaultConfig is passed in to configure our client behavior. Keys must
+// match the top level config because we copy the struct with reflection.
+type EnvVaultConfig struct {
+	// AWS Role options
+	AWSRole       string        `envconfig:"AWS_ROLE"`
+	AWSRoleTTL    time.Duration `envconfig:"AWS_ROLE_TTL"`
+	AWSRoleMaxTTL time.Duration `envconfig:"AWS_ROLE_MAX_TTL"`
 }
 
 // Our own narrowly-scoped interface for Hashicorp Vault Client
@@ -66,7 +77,7 @@ type VaultAPI interface {
 //
 // The default Address is https://127.0.0.1:8200, but this can be overridden by
 // setting the `VAULT_ADDR` environment variable.
-func NewDefaultVault() EnvVault {
+func NewDefaultVault(config *EnvVaultConfig) EnvVault {
 	conf := api.DefaultConfig()
 	err := conf.ReadEnvironment()
 	if err != nil {
@@ -75,19 +86,25 @@ func NewDefaultVault() EnvVault {
 	log.Infof("Vault address '%s' ", conf.Address)
 
 	vaultClient, _ := api.NewClient(conf)
-	envVault := EnvVault{client: vaultClient}
+	envVault := EnvVault{
+		client:  vaultClient,
+		config:  config,
+		handler: &vaultTokenAuthHandler{client: vaultClient},
+	}
+
+	log.Debugf("Vault Config: %#v", config)
 
 	// Check if we are supposed to have our own token. If so, get one. Otherwise
 	// attempt to use the shared token from the file. If we're handling a role-specific
 	// set of creds, we need our own token's TTL to match those of the request.
-	if os.Getenv("EXECUTOR_AWS_ROLE") != "" {
+	if config.AWSRole != "" {
 		err := getAWSRoleVaultToken(&envVault)
 		if err != nil {
 			log.Errorf("Failed to get Vault parent Token to enable AWS Role: %s", err)
 		}
 	} else if os.Getenv("VAULT_TOKEN") == "" {
 		// This will be a shared token
-		err := GetToken(&vaultTokenAuthHandler{client: vaultClient})
+		err := GetToken(envVault.handler)
 		if err != nil {
 			log.Errorf("Failure authenticating with Vault: %s", err)
 		}
@@ -108,40 +125,29 @@ func getAWSRoleVaultToken(envVault *EnvVault) error {
 
 	log.Info("Attempting to get a service-specific parent token with TTL to match requested AWS Role")
 
-	if ttlStr := os.Getenv("EXECUTOR_AWS_ROLE_TTL"); ttlStr != "" {
-		ttl, err = parseTokenTTL(ttlStr)
-		if err != nil {
-			return err
+	if envVault.config.AWSRoleTTL != time.Duration(0) {
+		if (envVault.config.AWSRoleTTL > envVault.config.AWSRoleMaxTTL) && (envVault.config.AWSRoleMaxTTL != 0) {
+			return fmt.Errorf(
+				"AWSRoleTTL cannot be longer than AWSRoleMaxTTL: %s vs %s",
+				envVault.config.AWSRoleTTL, envVault.config.AWSRoleMaxTTL,
+			)
 		}
+		// We want the seconds in the duraction, downgraded to an int.
+		ttl = int(envVault.config.AWSRoleTTL / time.Second)
 	}
 
-	handler := &vaultTokenAuthHandler{client: envVault.client.(*api.Client)}
-
-	token, err := GetTokenWithLogin(handler, ttl)
+	token, err := GetTokenWithLogin(envVault.handler, ttl)
 	if err != nil {
 		return err
 	}
 
 	// Set the token on the client for use throughout its lifecycle
-	handler.SetToken(token)
+	envVault.handler.SetToken(token)
 	envVault.token = token
 
 	log.Info("Service-specific token stored")
 
 	return nil
-}
-
-// parseTokenTTL parse a token duration and converts down to an integer in seconds
-func parseTokenTTL(ttlStr string) (int, error) {
-	ttlTmp, err := time.ParseDuration(ttlStr)
-	if ttlTmp < 1 || err != nil {
-		return -1, fmt.Errorf("Invalid TTL passed in AWSRoleTTL . Could not parse: '%s'", ttlStr)
-	}
-
-	// We want the seconds in the duraction, downgraded to an int.
-	ttl := int(ttlTmp / time.Second)
-
-	return ttl, nil
 }
 
 // DecryptAllEnv decrypts all env vars that contain a Vault path.  All values

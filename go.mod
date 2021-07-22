@@ -27,6 +27,7 @@ require (
 	github.com/hashicorp/go-sockaddr v0.0.0-20180320115054-6d291a969b86
 	github.com/hashicorp/hcl v0.0.0-20180906183839-65a6292f0157
 	github.com/hashicorp/vault v1.0.1
+	github.com/jinzhu/copier v0.3.2 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible
 	github.com/konsorten/go-windows-terminal-sequences v1.0.1
 	github.com/mesos/mesos-go v0.0.10

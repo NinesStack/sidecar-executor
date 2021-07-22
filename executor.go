@@ -18,6 +18,7 @@ import (
 	"github.com/Nitro/sidecar-executor/vault"
 	"github.com/Nitro/sidecar/service"
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/jinzhu/copier"
 	mesos "github.com/mesos/mesos-go/api/v1/lib"
 	"github.com/relistan/go-director"
 	log "github.com/sirupsen/logrus"
@@ -61,11 +62,15 @@ type sidecarExecutor struct {
 func newSidecarExecutor(client container.DockerClient, auth *docker.AuthConfiguration,
 	config Config) *sidecarExecutor {
 
+	// Mirror the settings we want in the sub-config, by matching keys
+	var vaultConfig vault.EnvVaultConfig
+	copier.Copy(&vaultConfig, &config)
+
 	return &sidecarExecutor{
 		client:          client,
 		fetcher:         &http.Client{Timeout: config.HttpTimeout},
 		dockerAuth:      auth,
-		vault:           vault.NewDefaultVault(),
+		vault:           vault.NewDefaultVault(&vaultConfig),
 		config:          config,
 		statusSleepTime: DefaultStatusSleepTime,
 	}

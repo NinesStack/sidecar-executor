@@ -52,8 +52,9 @@ type Config struct {
 	Debug                   bool          `envconfig:"DEBUG" default:"false"`
 
 	// AWS Role options
-	AWSRole    string        `envconfig:"AWS_ROLE"`
-	AWSRoleTTL time.Duration `envconfig:"AWS_ROLE_TTL"`
+	AWSRole       string        `envconfig:"AWS_ROLE" copier:"must"`
+	AWSRoleTTL    time.Duration `envconfig:"AWS_ROLE_TTL" copier:"must"`
+	AWSRoleMaxTTL time.Duration `envconfig:"AWS_ROLE_MAX_TTL" default:"744h" copier:"must"` // 31 days
 
 	// Mesos options
 	MesosMasterPort string `envconfig:"MESOS_MASTER_PORT" default:"5050"`
@@ -108,6 +109,7 @@ func logConfig(config Config) {
 	log.Infof(" * LogHostname:             %s", config.LogHostname)
 	log.Infof(" * AWSRole:                 %s", config.AWSRole)
 	log.Infof(" * AWSRoleTTL:              %s", config.AWSRoleTTL)
+	log.Infof(" * AWSRoleMaxTTL:           %s", config.AWSRoleMaxTTL)
 	log.Infof(" * Debug:                   %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")
