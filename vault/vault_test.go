@@ -28,43 +28,24 @@ func Capture(fn func()) string {
 
 func Test_NewDefaultVault(t *testing.T) {
 	Convey("NewDefaultVault()", t, func() {
-		Reset(func() { os.Unsetenv("EXECUTOR_AWS_ROLE") })
-
 		Convey("returns a properly configured Vault client", func() {
-			client := NewDefaultVault()
+			client := NewDefaultVault(&EnvVaultConfig{})
 
 			So(client, ShouldNotBeNil)
 			So(client.client, ShouldNotBeNil)
 		})
 
 		Convey("configures a service-specific token if required", func() {
-			os.Setenv("EXECUTOR_AWS_ROLE", "some-role")
-
 			var client EnvVault
 
 			output := Capture(func() {
-				client = NewDefaultVault()
+				client = NewDefaultVault(&EnvVaultConfig{AWSRole: "some-role"})
 			})
 
 			So(client, ShouldNotBeNil)
 			So(client.client, ShouldNotBeNil)
 
 			So(output, ShouldContainSubstring, "Attempting to get a service-specific parent token with TTL to match requested AWS Role")
-		})
-	})
-}
-
-func Test_parseTokenTTL(t *testing.T) {
-	Convey("parseTokenTTL()", t, func() {
-		Convey("parses a token when formatted properly", func() {
-			ttl, err := parseTokenTTL("1h1m1s")
-			So(err, ShouldBeNil)
-			So(ttl, ShouldEqual, 3661)
-		})
-
-		Convey("returns an error on non-duration values", func() {
-			_, err := parseTokenTTL("3600")
-			So(err, ShouldNotBeNil)
 		})
 	})
 }
@@ -254,6 +235,31 @@ func Test_RenewAWSCredsLease(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "Unable to unmarshal Vault response body")
 			So(newLease, ShouldBeNil)
+		})
+	})
+}
+
+func Test_getAWSRoleVaultToken(t *testing.T) {
+	Convey("getAWSRoleVaultToken()", t, func() {
+		client := NewDefaultVault(&EnvVaultConfig{
+			AWSRoleTTL:    10 * time.Second,
+			AWSRoleMaxTTL: 1 * time.Second,
+		})
+
+		client.client = &mockVaultAPI{}
+
+		Reset(func() {
+			os.Unsetenv("VAULT_USERNAME")
+			os.Unsetenv("VAULT_PASSWORD")
+		})
+
+		Convey("bails out when the TTL is longer than the Max TTL", func() {
+			os.Setenv("VAULT_USERNAME", "beowulf")
+			os.Setenv("VAULT_PASSWORD", "grendelsux")
+
+			err := getAWSRoleVaultToken(&client)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "AWSRoleTTL cannot be longer than AWSRoleMaxTTL")
 		})
 	})
 }

@@ -55,7 +55,6 @@ func Test_GetTTL(t *testing.T) {
 func Test_GetToken(t *testing.T) {
 	Convey("GetToken()", t, func() {
 		mock := &mockTokenAuthHandler{}
-		ttl := GetTTL()
 
 		Convey("when VAULT_TOKEN_FILE is NOT set", func() {
 			os.Unsetenv("VAULT_TOKEN_FILE")
@@ -77,8 +76,6 @@ func Test_GetToken(t *testing.T) {
 				So(mock.ValidateWasCalled, ShouldBeFalse)
 				So(mock.token, ShouldEqual, "from_login")
 				So(mock.loginOptions["password"], ShouldEqual, "guinevere")
-				So(mock.loginOptions["ttl"], ShouldEqual, ttl+StartupGracePeriod)
-				So(mock.loginOptions["max_ttl"], ShouldEqual, ttl+StartupGracePeriod)
 			})
 
 			Convey("errors when Login fails", func() {
@@ -189,6 +186,10 @@ func (m *mockTokenAuthHandler) Login(username string, password string,
 	}
 
 	return m.token, nil
+}
+
+func (m *mockTokenAuthHandler) Renew(token string, ttl int) error {
+	return nil
 }
 
 func (m *mockTokenAuthHandler) SetToken(token string) {
