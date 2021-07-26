@@ -1,3 +1,4 @@
 sidecar-executor
 *.swp
 *.swo
+/dist
