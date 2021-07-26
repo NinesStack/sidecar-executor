@@ -8,6 +8,7 @@ before:
     - go generate ./...
 builds:
 -
+  id: sidecar-executor
   env:
     - CGO_ENABLED=0
   goos:
@@ -20,9 +21,8 @@ archives:
   replacements:
     linux: Linux
     amd64: x86_64
-  id: my-archive
   builds:
-    - default
+    - sidecar-executor
   files:
     - README.md
     - LICENSE
