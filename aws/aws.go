@@ -27,7 +27,7 @@ type Aws interface {
 
 func WaitForAWSCredsToActivate(accessKeyID string, secretAccessKeyID string) error {
 	// Load the IAM keys issued from Vault
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
+	cfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			accessKeyID, secretAccessKeyID, "")),
 	)
