@@ -14,6 +14,7 @@ import (
 
 	"fmt"
 
+	"github.com/Nitro/sidecar-executor/aws"
 	"github.com/Nitro/sidecar-executor/container"
 	"github.com/Nitro/sidecar-executor/vault"
 	"github.com/Nitro/sidecar/service"
@@ -49,6 +50,7 @@ type sidecarExecutor struct {
 	dockerAuth      *docker.AuthConfiguration
 	failCount       int
 	vault           vault.Vault
+	aws             aws.Aws
 	config          Config
 	statusSleepTime time.Duration
 	// Populated during LaunchTask
@@ -478,8 +480,9 @@ func (exec *sidecarExecutor) monitorAWSCredsLease() {
 	ourProcess.Signal(syscall.SIGUSR1)
 }
 
-// AddAndMonitorVaultAWSKeys gets the aws keys for the specified role from Vault, begins monitoring
-// the lease, and returns the vars added to those that were passed in.
+// AddAndMonitorVaultAWSKeys gets the aws keys for the specified role from Vault,
+// waits for the IAM keys to become active, begins monitoring the lease
+// then returns the vars added to those that were passed in.
 func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role string) ([]string, error) {
 	awsCredsLease, err := exec.vault.GetAWSCredsLease(role)
 	if err != nil {
@@ -488,6 +491,11 @@ func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role
 
 	if awsCredsLease.Vars == nil {
 		return nil, errors.New("Got empty AWS vars! Expected creds. Exiting... we can't run like this")
+	}
+
+	err = exec.aws.WaitForAWSCredsToActivate(awsCredsLease.AccessKey, awsCredsLease.SecretKey)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to verify AWS credentials available: %s", err)
 	}
 
 	log.Info("Retrieved AWS Credentials, populating env vars")

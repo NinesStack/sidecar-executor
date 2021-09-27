@@ -286,6 +286,8 @@ type VaultAWSCredsLease struct {
 	LeaseExpiryTime time.Time
 	LeaseID         string
 	Role            string
+	AccessKey       string
+	SecretKey       string
 }
 
 // MaybeRevokeToken will be called on shutdown, and *if* we cached a parent
@@ -365,6 +367,8 @@ func (v EnvVault) GetAWSCredsLease(role string) (*VaultAWSCredsLease, error) {
 		LeaseExpiryTime: expiryTime,
 		LeaseID:         creds.LeaseID,
 		Role:            role,
+		AccessKey:       creds.Data.AccessKey,
+		SecretKey:       creds.Data.SecretKey,
 	}, nil
 }
 
