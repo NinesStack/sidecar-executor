@@ -32,7 +32,7 @@ func WaitForAWSCredsToActivate(accessKeyID string, secretAccessKeyID string) err
 			accessKeyID, secretAccessKeyID, "")),
 	)
 	if err != nil {
-		return fmt.Errorf("Fatal error, could not in load AWS credential provider")
+		return fmt.Errorf("Fatal error, could not in load AWS credential provider: %s", err)
 	}
 
 	svc := sts.NewFromConfig(cfg)
