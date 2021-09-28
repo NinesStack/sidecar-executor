@@ -18,14 +18,14 @@ import (
 
 const (
 	RetryLimit = 10
-	RetrySleep = 1 * time.Second
+	RetrySleep = 2 * time.Second
 )
 
 type Aws interface {
-	WaitForAWSCredsToActivate(accessKeyID string, secretAccessKeyID string) error
+	WaitForAWSCredsToBeActive(accessKeyID string, secretAccessKeyID string) error
 }
 
-func WaitForAWSCredsToActivate(accessKeyID string, secretAccessKeyID string) error {
+func WaitForAWSCredsToBeActive(accessKeyID string, secretAccessKeyID string) error {
 	// Load the IAM keys issued from Vault
 	cfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
@@ -47,7 +47,7 @@ func WaitForAWSCredsToActivate(accessKeyID string, secretAccessKeyID string) err
 		}
 
 		// Should we pollute logs with retry log output?
-		//log.Infof("Failed %d times, %d retries left", i+1, RetryLimit-i-1)
+		log.Infof("Failed %d times, %d retries left", i+1, RetryLimit-i-1)
 		time.Sleep(RetrySleep)
 	}
 

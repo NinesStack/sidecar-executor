@@ -493,7 +493,7 @@ func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role
 		return nil, errors.New("Got empty AWS vars! Expected creds. Exiting... we can't run like this")
 	}
 
-	err = exec.aws.WaitForAWSCredsToActivate(awsCredsLease.AccessKey, awsCredsLease.SecretKey)
+	err = exec.aws.WaitForAWSCredsToBeActive(awsCredsLease.AccessKey, awsCredsLease.SecretKey)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to verify AWS credentials available: %s", err)
 	}
