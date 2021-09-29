@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -46,7 +47,6 @@ func WaitForAWSCredsToBeActive(accessKeyID string, secretAccessKeyID string) err
 			break
 		}
 
-		// Should we pollute logs with retry log output?
 		log.Infof("Failed %d times, %d retries left", i+1, RetryLimit-i-1)
 		time.Sleep(RetrySleep)
 	}
