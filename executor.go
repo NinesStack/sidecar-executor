@@ -50,7 +50,7 @@ type sidecarExecutor struct {
 	dockerAuth      *docker.AuthConfiguration
 	failCount       int
 	vault           vault.Vault
-	aws             aws.Aws
+	aws             aws.AWSClientInterface
 	config          Config
 	statusSleepTime time.Duration
 	// Populated during LaunchTask
@@ -493,7 +493,11 @@ func (exec *sidecarExecutor) AddAndMonitorVaultAWSKeys(addEnvVars []string, role
 		return nil, errors.New("Got empty AWS vars! Expected creds. Exiting... we can't run like this")
 	}
 
-	err = exec.aws.WaitForAWSCredsToBeActive(awsCredsLease.AccessKey, awsCredsLease.SecretKey)
+	cfg, err := exec.aws.LoadAWSConfig(awsCredsLease.AccessKey, awsCredsLease.SecretKey)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to load AWS Configuration: %s", err)
+	}
+	err = exec.aws.WaitForAWSCredsToBeActive(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to verify AWS credentials available: %s", err)
 	}

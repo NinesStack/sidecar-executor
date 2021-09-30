@@ -11,49 +11,62 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	RetryLimit = 10
-	RetrySleep = 2 * time.Second
-)
-
-type Aws interface {
-	WaitForAWSCredsToBeActive(accessKeyID string, secretAccessKeyID string) error
+type AWSClientInterface interface {
+	LoadAWSConfig(accessKeyID string, secretAccessKeyID string) (aws.Config, error)
+	WaitForAWSCredsToBeActive(cfg aws.Config) error
 }
 
-func WaitForAWSCredsToBeActive(accessKeyID string, secretAccessKeyID string) error {
-	// Load the IAM keys issued from Vault
+type awsClient struct{
+	AWSRetryLimit int
+	AWSRetrySleep time.Duration
+}
+
+func newAwsClient(retryLimit int, retrySleep time.Duration) *awsClient {
+	return &awsClient{retryLimit, retrySleep}
+}
+
+// Load the IAM keys issued from Vault
+func (a *awsClient) LoadAWSClientConfig(accessKeyID string, secretAccessKeyID string) (*aws.Config, error) {
 	cfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			accessKeyID, secretAccessKeyID, "")),
 	)
 	if err != nil {
-		return fmt.Errorf("Fatal error, could not load AWS credential provider: %s", err)
+		return &cfg, fmt.Errorf("Fatal error, could not load AWS credential provider: %s", err)
 	}
+	return &cfg, nil
+}
 
-	svc := sts.NewFromConfig(cfg)
+func (a *awsClient) LoadAWSStsClient(cfg aws.Config) *sts.Client {
+	return sts.NewFromConfig(cfg)
+}
+
+func (a *awsClient) WaitForAWSCredsToBeActive(cfg aws.Config) error {
+	svc := a.LoadAWSStsClient(cfg)
 	input := &sts.GetCallerIdentityInput{}
 
 	var credsOk bool
-	for i := 0; i < RetryLimit; i++ {
+	for i := 0; i < a.AWSRetryLimit; i++ {
 		_, err := svc.GetCallerIdentity(context.Background(), input)
 		if err == nil {
 			credsOk = true
 			break
 		}
 
-		log.Infof("Failed %d times, %d retries left", i+1, RetryLimit-i-1)
-		time.Sleep(RetrySleep)
+		log.Infof("Failed %d times, %d retries left", i+1, a.AWSRetryLimit-i-1)
+		time.Sleep(a.AWSRetrySleep)
 	}
 
 	if credsOk {
 		return nil
 	} else {
-		return fmt.Errorf("Fatal error, timed out waiting for IAM credentials to become active: %s", err)
+		return fmt.Errorf("Fatal error, timed out waiting for IAM credentials to become active")
 	}
 }

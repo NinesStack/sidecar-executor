@@ -56,6 +56,10 @@ type Config struct {
 	AWSRoleTTL    time.Duration `envconfig:"AWS_ROLE_TTL" copier:"must"`
 	AWSRoleMaxTTL time.Duration `envconfig:"AWS_ROLE_MAX_TTL" default:"744h" copier:"must"` // 31 days
 
+	// AWS IAM Client options
+	AWSRetryLimit int           `envconfig:"AWS_RETRY_LIMIT" default:"10" copier:"must"`
+	AWSRetrySleep time.Duration `envconfig:"AWS_RETRY_SLEEP" default:"2s" copier:"must"` // 2 seconds
+
 	// Mesos options
 	MesosMasterPort string `envconfig:"MESOS_MASTER_PORT" default:"5050"`
 
@@ -110,6 +114,8 @@ func logConfig(config Config) {
 	log.Infof(" * AWSRole:                 %s", config.AWSRole)
 	log.Infof(" * AWSRoleTTL:              %s", config.AWSRoleTTL)
 	log.Infof(" * AWSRoleMaxTTL:           %s", config.AWSRoleMaxTTL)
+	log.Infof(" * AWSRetryLimit:           %d", config.AWSRetryLimit)
+	log.Infof(" * AWSRetrySleep:           %s", config.AWSRetrySleep)
 	log.Infof(" * Debug:                   %t", config.Debug)
 
 	log.Infof("Environment ---------------------------")

@@ -8,6 +8,7 @@ require (
 	github.com/Nitro/sidecar v2.0.1+incompatible
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5
 	github.com/avast/retry-go v2.4.3+incompatible
+	github.com/aws/aws-sdk-go-v2 v1.9.1 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.8.2 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.4.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.7.1 // indirect

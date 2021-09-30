@@ -463,7 +463,7 @@ func Test_ExecutorCallbacks(t *testing.T) {
 
 			Convey("Ups the TTL on creds from Vault when specified", func() {
 				exec.config.AWSRole = "valid-aws-role"
-				exec.config.AWSRoleTTL = time.Duration(1*time.Minute+40*time.Second)
+				exec.config.AWSRoleTTL = time.Duration(1*time.Minute + 40*time.Second)
 				taskInfo.Container.Docker.Parameters = labelsToDockerParams(dummyContainerLabels)
 
 				// We'll use logging output to validate that the goroutine ran
