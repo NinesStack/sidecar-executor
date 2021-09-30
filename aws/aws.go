@@ -23,7 +23,7 @@ type AWSClientInterface interface {
 	WaitForAWSCredsToBeActive(cfg aws.Config) error
 }
 
-type awsClient struct{
+type awsClient struct {
 	AWSRetryLimit int
 	AWSRetrySleep time.Duration
 }
