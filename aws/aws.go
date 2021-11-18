@@ -18,50 +18,59 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type AWSClientInterface interface {
-	LoadAWSConfig(accessKeyID string, secretAccessKeyID string) (aws.Config, error)
-	WaitForAWSCredsToBeActive(cfg aws.Config) error
+type STSClient interface {
+	GetCallerIdentity(ctx context.Context, params *sts.GetCallerIdentityInput, optFns ...func(*sts.Options)) (*sts.GetCallerIdentityOutput, error)
 }
 
-type awsClient struct {
-	AWSRetryLimit int
-	AWSRetrySleep time.Duration
+type AWSConfig interface {
+	LoadDefaultConfig(ctx context.Context, optFns ...func(*config.LoadOptions) error) (cfg aws.Config, err error)
 }
 
-func newAwsClient(retryLimit int, retrySleep time.Duration) *awsClient {
-	return &awsClient{retryLimit, retrySleep}
+type AWSClientConfig struct {
+	defaultConfig aws.Config
+	awsConfig     AWSConfig
+}
+
+type AWSClient struct {
+	AWSIAMRetryLimit int
+	AWSIAMRetrySleep time.Duration
+	stsClient        STSClient
+}
+
+func NewAWSClient(retryLimit int, retrySleep time.Duration, cfg *AWSClientConfig) *AWSClient {
+	client := sts.NewFromConfig(cfg.defaultConfig)
+	return &AWSClient{
+		AWSIAMRetryLimit: retryLimit,
+		AWSIAMRetrySleep: retrySleep,
+		stsClient:        client,
+	}
 }
 
 // Load the IAM keys issued from Vault
-func (a *awsClient) LoadAWSClientConfig(accessKeyID string, secretAccessKeyID string) (*aws.Config, error) {
-	cfg, err := config.LoadDefaultConfig(context.Background(),
+func NewAWSClientConfig(accessKeyID string, secretAccessKeyID string) *AWSClientConfig {
+	cfg, _ := config.LoadDefaultConfig(context.Background(),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			accessKeyID, secretAccessKeyID, "")),
 	)
-	if err != nil {
-		return &cfg, fmt.Errorf("Fatal error, could not load AWS credential provider: %s", err)
+	return &AWSClientConfig{
+		defaultConfig: cfg,
 	}
-	return &cfg, nil
 }
 
-func (a *awsClient) LoadAWSStsClient(cfg aws.Config) *sts.Client {
-	return sts.NewFromConfig(cfg)
-}
-
-func (a *awsClient) WaitForAWSCredsToBeActive(cfg aws.Config) error {
-	svc := a.LoadAWSStsClient(cfg)
+func (a *AWSClient) WaitForAWSCredsToBeActive() error {
 	input := &sts.GetCallerIdentityInput{}
 
 	var credsOk bool
-	for i := 0; i < a.AWSRetryLimit; i++ {
-		_, err := svc.GetCallerIdentity(context.Background(), input)
+	for i := 0; i < a.AWSIAMRetryLimit; i++ {
+		_, err := a.stsClient.GetCallerIdentity(context.Background(), input)
 		if err == nil {
 			credsOk = true
 			break
 		}
 
-		log.Infof("Failed %d times, %d retries left", i+1, a.AWSRetryLimit-i-1)
-		time.Sleep(a.AWSRetrySleep)
+		log.Infof("Failed %d times, %d retries left", i+1, a.AWSIAMRetryLimit-i-1)
+		log.Infof("%s", err)
+		time.Sleep(a.AWSIAMRetrySleep)
 	}
 
 	if credsOk {
